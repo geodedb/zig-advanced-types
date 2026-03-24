@@ -3,22 +3,17 @@
 
 //! # advanced-types
 //!
-//! A Zig library for advanced-types
-//!
-//! ## Features
-//!
-//! - Feature 1
-//! - Feature 2
-//! - Feature 3
+//! Portable value types for network addresses, vectors, geographic
+//! coordinates, URLs, and generic ranges.
 //!
 //! ## Quick Start
 //!
 //! ```zig
-//! const advanced_types = @import("advanced_types");
+//! const types = @import("advanced_types");
 //!
-//! pub fn main() !void {
-//!     // Your code here
-//! }
+//! const ip = try types.Ipv4Addr.parse("192.168.1.1");
+//! const coord = try types.LatLon.init(37.7749, -122.4194);
+//! const v = types.VectorF32.init(.{ 1.0, 2.0, 3.0 });
 //! ```
 //!
 //! ## License
@@ -30,51 +25,63 @@ const std = @import("std");
 /// Library version
 pub const version = "0.1.0";
 
-// Re-export submodules here as the library grows:
-// pub const submodule = @import("submodule.zig");
-
 // ============================================================================
-// Public Types
+// Type modules
 // ============================================================================
 
-/// Example configuration structure
-pub const Config = struct {
-    /// Enable debug output
-    debug: bool = false,
-    /// Maximum retry attempts
-    max_retries: u32 = 3,
-    /// Timeout in milliseconds
-    timeout_ms: u64 = 30_000,
-};
+pub const network = @import("types/network.zig");
+pub const vector = @import("types/vector.zig");
+pub const geographic = @import("types/geographic.zig");
+pub const url = @import("types/url.zig");
+pub const range = @import("types/range.zig");
 
 // ============================================================================
-// Public Functions
+// Convenience re-exports — network types
 // ============================================================================
 
-/// Initialize the library with the given configuration.
-///
-/// Returns an error if the configuration is invalid.
-pub fn init(config: Config) !void {
-    _ = config;
-    // Implementation here
-}
+pub const Ipv4Addr = network.Ipv4Addr;
+pub const Ipv6Addr = network.Ipv6Addr;
+pub const IpAddr = network.IpAddr;
+pub const Subnet = network.Subnet;
+pub const Mac = network.Mac;
+
+// ============================================================================
+// Convenience re-exports — vector types
+// ============================================================================
+
+pub const Vector = vector.Vector;
+pub const VectorF32 = vector.VectorF32;
+pub const VectorI32 = vector.VectorI32;
+
+// ============================================================================
+// Convenience re-exports — geographic types
+// ============================================================================
+
+pub const LatLon = geographic.LatLon;
+pub const LatLonAlt = geographic.LatLonAlt;
+pub const GeoPoint = geographic.GeoPoint;
+
+// ============================================================================
+// Convenience re-exports — URL / domain types
+// ============================================================================
+
+pub const Url = url.Url;
+pub const Domain = url.Domain;
+
+// ============================================================================
+// Convenience re-exports — range types
+// ============================================================================
+
+pub const Range = range.Range;
+pub const IntRange = range.IntRange;
+pub const UintRange = range.UintRange;
+pub const FloatRange = range.FloatRange;
 
 // ============================================================================
 // Unit Tests
 // ============================================================================
 
-test "Config default values" {
-    const config = Config{};
-    try std.testing.expectEqual(false, config.debug);
-    try std.testing.expectEqual(@as(u32, 3), config.max_retries);
-    try std.testing.expectEqual(@as(u64, 30_000), config.timeout_ms);
-}
-
-test "init with default config" {
-    try init(.{});
-}
-
 test {
-    // Ensure all declarations are referenced for test coverage
+    // Pull in tests from all submodules
     std.testing.refAllDecls(@This());
 }

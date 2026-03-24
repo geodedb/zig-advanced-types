@@ -9,19 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Initial project structure
-- Core library implementation
-- Unit and integration tests
-- CI/CD pipeline
-- Documentation
+- Network types: `Ipv4Addr`, `Ipv6Addr`, `IpAddr`, `Subnet`, `Mac`
+- Vector types: `Vector(T, N)`, `VectorF32`, `VectorI32` with distance metrics
+- Geographic types: `LatLon`, `LatLonAlt`, `GeoPoint` with haversine distance
+- URL/domain types: `Url`, `Domain` with zero-allocation parsing
+- Range types: `Range(T)`, `IntRange`, `UintRange`, `FloatRange`
+- 230 tests (221 unit + 9 integration)
+- CI/CD pipeline with SAST, dependency scanning, cross-compilation
+- Documentation and gap analysis tracking
 
-## [0.1.0] - YYYY-MM-DD
-
-### Added
-
-- Initial release
-- Basic functionality
-- Documentation and examples
-
-[Unreleased]: https://gitlab.com/devnw/zig/advanced_types/-/compare/v0.1.0...HEAD
-[0.1.0]: https://gitlab.com/devnw/zig/advanced_types/-/releases/v0.1.0
+[Unreleased]: https://gitlab.com/devnw/zig/advanced-types/-/compare/main...HEAD

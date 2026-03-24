@@ -3,14 +3,15 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Zig](https://img.shields.io/badge/Zig-0.15.1+-orange.svg)](https://ziglang.org/)
 
-A Zig library for advanced-types
+Portable value types for network addresses, vectors, geographic coordinates, URLs, and generic ranges. Extracted from Geode for reuse across projects.
 
 ## Features
 
 - **Zero Dependencies**: Pure Zig standard library only
-- **Memory Safe**: Proper allocation patterns with no leaks
-- **Cross-Platform**: Linux, macOS, Windows support
-- **Well Tested**: Comprehensive unit and integration tests
+- **17 Public Types**: IP addresses, subnets, MACs, vectors, coordinates, URLs, domains, ranges
+- **Zero Allocation**: All types are stack-allocated value types
+- **Cross-Platform**: Linux, macOS, Windows, aarch64 support
+- **230 Tests**: Comprehensive unit and integration tests
 
 ## Installation
 
@@ -21,7 +22,7 @@ Add to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .advanced_types = .{
-        .url = "https://gitlab.com/devnw/zig/advanced_types/-/archive/v0.1.0/advanced_types-v0.1.0.tar.gz",
+        .url = "https://gitlab.com/devnw/zig/advanced-types/-/archive/v0.1.0/advanced-types-v0.1.0.tar.gz",
         .hash = "...",
     },
 },
@@ -40,14 +41,29 @@ exe.root_module.addImport("advanced_types", advanced_types.module("advanced_type
 ## Quick Start
 
 ```zig
-const std = @import("std");
-const advanced_types = @import("advanced_types");
+const types = @import("advanced_types");
 
-pub fn main() !void {
-    try advanced_types.init(.{
-        .debug = true,
-    });
-}
+// Network: parse and classify IP addresses
+const ip = try types.Ipv4Addr.parse("192.168.1.1");
+const is_private = ip.isPrivate(); // true
+
+// Vectors: similarity search with cosine distance
+const a = types.VectorF32.init(.{ 1.0, 0.0, 0.0 });
+const b = types.VectorF32.init(.{ 0.9, 0.1, 0.0 });
+const dist = a.cosineDistance(b); // ~0.005
+
+// Geographic: haversine distance between coordinates
+const sf = try types.LatLon.init(37.7749, -122.4194);
+const ny = try types.LatLon.init(40.7128, -74.0060);
+const meters = sf.haversineDistance(ny); // ~4,129 km
+
+// URL: zero-allocation parsing
+const url = try types.Url.parse("https://api.example.com:8443/v1/data");
+
+// Ranges: interval operations
+const r1 = try types.IntRange.init(10, 20);
+const r2 = try types.IntRange.init(15, 25);
+const overlap = r1.overlaps(r2); // true
 ```
 
 ## Requirements

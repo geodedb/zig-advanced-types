@@ -20,7 +20,7 @@ include:
   - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.7.1
 
 variables:
-  ZIG_VERSION: "0.15.1"
+  ZIG_VERSION: "0.15.2"
 
 stages:
   - lint
@@ -81,6 +81,17 @@ test-release-safe:
     - *install-zig
   script:
     - zig build test -Doptimize=ReleaseSafe --summary all
+  needs:
+    - build
+
+# ReleaseFast optimization tests
+test-release-fast:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test -Doptimize=ReleaseFast --summary all
   needs:
     - build
 

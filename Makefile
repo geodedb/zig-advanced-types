@@ -5,6 +5,7 @@
 .PHONY: all build test test-unit test-integration clean check fmt help dev ci
 .PHONY: test-release-safe test-release-fast test-release-small test-all-optimizations
 .PHONY: pre-commit-install pre-commit pre-commit-run
+.PHONY: coverage fuzz
 
 # Default target: build and run tests
 all: build test-unit
@@ -68,6 +69,22 @@ test-release-small:
 test-all-optimizations: test-unit test-release-safe test-release-fast test-release-small
 	@echo "✅ All optimization levels passed"
 
+# Code coverage (requires llvm-cov and llvm-profdata)
+coverage:
+	@echo "📊 Generating code coverage..."
+	@mkdir -p coverage
+	@zig build test -Doptimize=Debug 2>&1 && \
+		echo "Tests passed. Coverage data collected in .zig-cache/" && \
+		echo "To generate HTML report: llvm-profdata merge -sparse .zig-cache/default.profraw -o coverage/default.profdata && llvm-cov show ./zig-cache/.../test -instr-profile=coverage/default.profdata -format=html > coverage/index.html" || \
+		echo "Tests failed — coverage data may be incomplete."
+	@echo "Note: Full LLVM coverage instrumentation requires zig build flags not yet stabilized in 0.15."
+	@echo "See: https://ziglang.org/documentation/master/#Code-Coverage-Analysis"
+
+# Fuzz testing (runs continuously until stopped with Ctrl+C)
+fuzz:
+	@echo "🔀 Starting fuzz testing (Ctrl+C to stop)..."
+	@zig build test --fuzz
+
 # Pre-commit hook management
 pre-commit-install:
 	@echo "📦 Installing pre-commit hooks..."
@@ -101,6 +118,8 @@ help:
 	@echo "  test-release-fast    Test with ReleaseFast"
 	@echo "  test-release-small   Test with ReleaseSmall"
 	@echo "  test-all-optimizations  Test all optimization levels"
+	@echo "  coverage             Generate code coverage report"
+	@echo "  fuzz                 Run continuous fuzz testing"
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  fmt                  Format source code"

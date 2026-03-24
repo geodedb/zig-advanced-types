@@ -10,7 +10,7 @@
 
 ### Community Support
 
-- **Issues**: [GitLab Issues](https://gitlab.com/devnw/zig/advanced_types/-/issues)
+- **Issues**: [GitLab Issues](https://gitlab.com/devnw/zig/advanced-types/-/issues)
 - **Discussions**: Use issue templates for questions
 
 ### Bug Reports

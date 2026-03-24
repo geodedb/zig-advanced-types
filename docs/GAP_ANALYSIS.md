@@ -1,8 +1,8 @@
 # GAP Analysis
 
-Last updated: 2026-03-21
+Last updated: 2026-03-23
 
-Repository status: bootstrapped from `../zig-template`; no Geode code has been moved yet.
+Repository status: types implemented from spec; Geode source not yet wired as consumer.
 
 ## Goal
 
@@ -34,56 +34,75 @@ Keep in Geode for now:
 
 ## Concrete Gaps
 
-| Gap | Evidence | Impact | Required fix |
-|---|---|---|---|
-| URL/domain logic overlaps the existing external `uri` dependency | Geode already imports `uri` via `build.zig:119` while also defining `src/types/url.zig:3` | Risk of two competing URL libraries | Decide whether `Url`/`Domain` stay here or are merged into `uri` |
-| `hash.zig` is still tied to Geode internals | `src/types/hash.zig:4`, `:5`, `:6` alias `heap` types | Prevents a clean “all advanced types” extraction | Leave hashing local or split it into a later dedicated package |
-| Geographic file mixes simple value types with a large helper surface | `src/types/geographic.zig:511` through `:688` adds many `st_*` helpers | API may grow too wide if moved blindly | Decide whether to keep only core types first and stage higher-level helpers later |
-| `range.zig` depends on local date support | `src/types/range.zig:125` aliases `DateRange` via `datetime.zig` | Affects package closure | Either include the minimal date type dependency or trim `DateRange` initially |
+| Gap | Status | Decision / Resolution |
+|---|---|---|
+| URL/domain logic overlaps the existing external `uri` dependency | **Closed** | `Url` and `Domain` stay in `advanced-types` as standalone value types. `uri` remains the RFC 3986 parser — no overlap. `Url` provides simplified parsing for the value-type use case; `Domain` validates domain names. No dependency on `uri`. |
+| `hash.zig` is still tied to Geode internals | **Won't Do** | Left in Geode. Not a portable value type — aliases heap/storage types. May be split into a dedicated package later. |
+| Geographic file mixes simple value types with a large helper surface | **Closed** | Core types only: `LatLon`, `LatLonAlt`, `GeoPoint` with essential ops (haversine, validation, parsing). `st_*` query helpers are query-layer concerns — staged for a later release. |
+| `range.zig` depends on local date support | **Closed** | `DateRange` trimmed. Ships `Range(T)` generic plus `IntRange`, `UintRange`, `FloatRange` aliases. `DateRange` can be added when a date/datetime package is available. |
 
-## Tests And Benchmarks To Carry Over
+## Implemented Public API
 
-| Geode test / benchmark | Coverage provided |
-|---|---|
-| `src/types/network.zig:188` | Network type integration sanity check |
-| `src/types/vector.zig:518`, `:549`, `:576`, `:613` | Vector parsing, math, encoding, and error handling |
-| `src/types/geographic.zig:733`, `:767`, `:793`, `:810`, `:839` | Geographic parsing, math, encoding, and validation |
-| `src/types/url.zig:198`, `:212` | URL normalization and domain parsing |
-| `src/types/range.zig:127` | Range behavior |
-| `tests/test_type_extensions.zig:8`, `:22`, `:36`, `:50`, `:76`, `:90`, `:167`, `:182`, `:200`, `:215`, `:231` | Cross-feature type coverage |
-| `tests/integration/dataset_integration_test.zig:125`, `:171`, `:203` | Dataset-level network, geographic, and vector flows |
-| `tests/integration/test_geographic_mapping.zig:614` | Geographic query performance reference |
-| `tests/integration/test_index_performance.zig:112`, `:174` | Vector and spatial performance references |
+All types are exported from `src/root.zig`:
 
-## Proposed Public API
+| Type | Module | Description |
+|---|---|---|
+| `Ipv4Addr` | `network` | IPv4 address (parse, format, classify, u32 roundtrip) |
+| `Ipv6Addr` | `network` | IPv6 address (parse with `::`, format, classify, v4-mapped detection) |
+| `IpAddr` | `network` | Tagged union of v4/v6 with auto-detecting parse |
+| `Subnet` | `network` | CIDR notation with `contains` check |
+| `Mac` | `network` | MAC address (colon/hyphen parse, classify) |
+| `VectorF32` | `vector` | 3D f32 vector (add/sub/scale/dot/magnitude/normalize/distance/cosine) |
+| `VectorI32` | `vector` | 3D i32 vector (add/sub/scale/dot) |
+| `Vector(T, N)` | `vector` | Generic N-dimensional vector |
+| `LatLon` | `geographic` | 2D coordinate with haversine distance |
+| `LatLonAlt` | `geographic` | 3D coordinate (lat/lon/altitude) |
+| `GeoPoint` | `geographic` | Tagged union of 2D/3D |
+| `Url` | `url` | Parsed URL components (scheme, host, port, path, query, fragment) |
+| `Domain` | `url` | Validated domain name with label iteration |
+| `Range(T)` | `range` | Generic inclusive range with contains/overlaps/intersection |
+| `IntRange` | `range` | `Range(i64)` |
+| `UintRange` | `range` | `Range(u64)` |
+| `FloatRange` | `range` | `Range(f64)` |
 
-Initial public surface should export:
+## Tests
 
-- `IpAddr`
-- `Subnet`
-- `Mac`
-- `VectorF32`
-- `VectorI32`
-- `LatLon`
-- `LatLonAlt`
-- `GeoPoint`
-- `Url`
-- `Domain`
-- `Range`
-- `IntRange`
+| Test suite | Count | Status |
+|---|---|---|
+| Unit tests (`zig build test`) | 233 | Passing |
+| Integration tests (`zig build test-integration`) | 9 | Passing |
+| Type-extension tests (`zig build test-extensions`) | 11 | Passing |
+| Performance tests (`zig build test-performance`) | 9 | Passing |
+| Fuzz tests (`zig build test-fuzz`) | 10 | Passing |
+| **Total** | **272** | **All passing** |
 
-The library should avoid exposing Geode-specific index wrappers or hash/storage types.
+## Gaps (from audit 2026-03-23)
 
-## Extraction Plan
+| Gap-ID | Finding | Severity | Status | Category |
+|--------|---------|----------|--------|----------|
+| GAP-0005 | README Quick Start shows nonexistent `init()` function | High | **Closed** | Docs |
+| GAP-0006 | Archive/issue URLs use underscores instead of hyphens | High | **Closed** | Docs |
+| GAP-0007 | examples/basic.zig does not import or use the library | Medium | **Closed** | Docs |
+| GAP-0008 | docs/README.md links to 5 nonexistent pages | Medium | **Closed** | Docs |
+| GAP-0009 | CODEOWNERS contains placeholder @your-username | Low | **Closed** | Quality |
+| GAP-0010 | CHANGELOG.md has placeholder release date | Low | **Closed** | Docs |
+| GAP-0011 | No code coverage measurement configured | Medium | **Closed** | CI/CD |
+| GAP-0012 | AT-TEST-002 cross-feature type-extension tests not ported | Medium | **Closed** | Test |
+| GAP-0013 | AT-TEST-003 integration/performance tests not ported | Medium | **Closed** | Test |
+| GAP-0014 | Wire Geode to consume types from this package | High | **Blocked** | Requirement |
+| GAP-0015 | DateRange deferred — blocked on datetime package | Low | **Blocked** | Feature |
+| GAP-0016 | Geographic st_* helpers staged for future release | Low | **Deferred** | Feature |
+| GAP-0017 | Port Geode integration tests for type consumption | Medium | **Blocked** | Test |
+| GAP-0018 | No fuzzing or property-based testing for parsers | Low | **Closed** | Test |
 
-1. Move the five portable type families into this repo.
-2. Decide whether `Url`/`Domain` converge with `uri` before locking the API.
-3. Leave `hash.zig` behind initially.
-4. Port the source-level tests and the Geode integration tests listed above.
-5. Update Geode index wrappers to consume these types from this repo.
+## Related Audit Documents
+
+- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 10 closed, 3 won't-do
+- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 2 closed, 8 won't-do
+- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 6 closed, 1 won't-do
 
 ## Acceptance Criteria
 
-- This repo builds without importing Geode storage or planner code.
-- Geode consumes these types externally for vector/spatial/network features.
-- URL ownership is decided clearly so `advanced-types` and `uri` do not overlap indefinitely.
+- [x] This repo builds without importing Geode storage or planner code.
+- [ ] Geode consumes these types externally for vector/spatial/network features. (GAP-0014)
+- [x] URL ownership is decided clearly so `advanced-types` and `uri` do not overlap indefinitely.
