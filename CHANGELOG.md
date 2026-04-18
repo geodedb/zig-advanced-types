@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Geographic types: `LatLon`, `LatLonAlt`, `GeoPoint` with haversine distance
 - URL/domain types: `Url`, `Domain` with zero-allocation parsing
 - Range types: `Range(T)`, `IntRange`, `UintRange`, `FloatRange`
-- 230 tests (221 unit + 9 integration)
+- 304 tests (249 unit + 9 integration + 11 extension + 16 parser-edges + 9 performance + 10 fuzz)
 - CI/CD pipeline with SAST, dependency scanning, cross-compilation
 - Documentation and gap analysis tracking
 

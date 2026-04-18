@@ -11,7 +11,7 @@ Portable value types for network addresses, vectors, geographic coordinates, URL
 - **17 Public Types**: IP addresses, subnets, MACs, vectors, coordinates, URLs, domains, ranges
 - **Zero Allocation**: All types are stack-allocated value types
 - **Cross-Platform**: Linux, macOS, Windows, aarch64 support
-- **262 Tests**: Comprehensive unit, integration, type-extension, and performance tests (fuzz suite currently broken under Zig 0.16 -- see GAP-0020)
+- **304 Tests**: Comprehensive unit, integration, type-extension, parser-edges, performance, and fuzz tests (all suites green on Zig 0.16.0)
 
 ## Installation
 
