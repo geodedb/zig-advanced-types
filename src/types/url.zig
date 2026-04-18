@@ -228,7 +228,19 @@ pub const Url = struct {
             path = rest[slash_pos..];
         } else {
             authority = rest;
-            path = input[scheme_end + 3 + rest.len .. scheme_end + 3 + rest.len]; // empty slice at correct position
+            // No '/' terminator means the URL has no path component.
+            // We deliberately construct a zero-length slice anchored at the
+            // byte position immediately after `authority` in the original
+            // `input` buffer. This keeps `path.ptr` inside `input`, so the
+            // resulting `Url` stays a pure view over the caller's memory
+            // (no dangling pointer, no allocation) and pointer arithmetic
+            // such as `path.ptr - input.ptr` remains meaningful for callers
+            // that reconstruct byte offsets. `rest` is a sub-slice of
+            // `input` starting at `scheme_end + 3`, so
+            // `scheme_end + 3 + rest.len` is the one-past-end offset of
+            // `authority` within `input`.
+            const end_off = scheme_end + 3 + rest.len;
+            path = input[end_off..end_off];
         }
 
         if (authority.len == 0) return ParseError.MissingHost;
