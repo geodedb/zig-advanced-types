@@ -282,10 +282,10 @@ pub const Ipv6Addr = struct {
                 group_count += 1;
                 current_value = 0;
                 digit_count = 0;
-            } else if (hexDigitValue(ch)) |val| {
+            } else if (hexDigitToInt(ch)) |val| {
                 digit_count += 1;
                 if (digit_count > 4) return error.Overflow;
-                current_value = current_value * 16 + val;
+                current_value = current_value * 16 + @as(u32, val);
             } else {
                 return error.InvalidCharacter;
             }
@@ -300,11 +300,6 @@ pub const Ipv6Addr = struct {
         group_count += 1;
 
         return group_count;
-    }
-
-    fn hexDigitValue(ch: u8) ?u32 {
-        const v: u32 = hexDigitToInt(ch) orelse return null;
-        return v;
     }
 
     /// Write this address in RFC 5952 canonical notation to the given writer.
@@ -632,16 +627,12 @@ pub const Mac = struct {
                 if (input[offset - 1] != sep) return error.InvalidFormat;
             }
 
-            const hi = hexVal(input[offset]) orelse return error.InvalidCharacter;
-            const lo = hexVal(input[offset + 1]) orelse return error.InvalidCharacter;
+            const hi = hexDigitToInt(input[offset]) orelse return error.InvalidCharacter;
+            const lo = hexDigitToInt(input[offset + 1]) orelse return error.InvalidCharacter;
             octets[i] = hi << 4 | lo;
         }
 
         return .{ .octets = octets };
-    }
-
-    fn hexVal(ch: u8) ?u8 {
-        return hexDigitToInt(ch);
     }
 
     /// Write this address in uppercase colon-separated hex notation to the given writer.
