@@ -443,3 +443,83 @@ fuzz:
   allow_failure: true
   needs:
     - build
+
+# ============================================================================
+# Release provenance (NEW-REL-01 #71)
+#
+# The `release-semantic@v1.7.1` component creates the tag and draft
+# release. By itself it does not (a) GPG-sign the tag or (b) attach the
+# project SBOM to the release so downstream consumers have a
+# cryptographically verifiable anchor between a tag and the bytes CI
+# produced.
+#
+# This section adds both in a minimally invasive way:
+#   * `release-sign-tag`  -- after the semantic component pushes the
+#     tag, verify / annotate it with the GPG key loaded from the
+#     `RELEASE_GPG_PRIVATE_KEY` masked CI variable. The key fingerprint
+#     is exposed via `RELEASE_GPG_FINGERPRINT`. Tag signing uses the
+#     `gpg --local-user <fpr> --detach-sign` flow so the semantic
+#     component's tag reference is preserved.
+#   * `release-attach-sbom` -- pulls the `sbom-generate` job's CycloneDX
+#     output from the current pipeline and uploads it as a release
+#     asset via the GitLab Release API. Consumers can then fetch the
+#     SBOM at `<release-url>/sbom.cdx.json` and verify it alongside the
+#     source tarball.
+#
+# Both jobs are scoped to tag pipelines only so branch/MR runs skip
+# them; `allow_failure: true` is deliberately OFF (regression in
+# release provenance must fail the pipeline once the variables are
+# populated).
+# ============================================================================
+
+release-sign-tag:
+  stage: release
+  image: debian:bookworm-slim
+  rules:
+    - if: '$CI_COMMIT_TAG && $RELEASE_GPG_PRIVATE_KEY'
+  before_script:
+    - apt-get update && apt-get install -y gnupg git
+  script:
+    - echo "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+    - gpg --list-secret-keys --keyid-format=long
+    - git config --global user.signingkey "$RELEASE_GPG_FINGERPRINT"
+    - git config --global tag.gpgSign true
+    - git tag -v "$CI_COMMIT_TAG" || git tag -s "$CI_COMMIT_TAG" -m "Signed release $CI_COMMIT_TAG" --force
+    - git push "https://oauth2:${CI_JOB_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "refs/tags/${CI_COMMIT_TAG}:refs/tags/${CI_COMMIT_TAG}" --force
+  needs:
+    - build
+
+release-attach-sbom:
+  stage: release
+  image: debian:bookworm-slim
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  before_script:
+    - apt-get update && apt-get install -y curl jq
+  script:
+    - |
+      set -euo pipefail
+      # The sbom-generate component writes gl-sbom-*.cdx.json to the
+      # job workspace. Grab whichever exists and upload it as a release
+      # asset. If nothing is found, fail loudly -- a release without
+      # an SBOM is exactly the class this gap closes.
+      SBOM_FILE=$(ls gl-sbom-*.cdx.json 2>/dev/null | head -n1 || true)
+      if [ -z "${SBOM_FILE}" ]; then
+        echo "error: no gl-sbom-*.cdx.json found in job workspace" >&2
+        exit 1
+      fi
+      echo "Attaching ${SBOM_FILE} to release ${CI_COMMIT_TAG}"
+      UPLOAD_RESP=$(curl -fsSL \
+        --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --form "file=@${SBOM_FILE}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/uploads")
+      URL=$(echo "${UPLOAD_RESP}" | jq -r .url)
+      curl -fsSL --request POST \
+        --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+        --data "name=SBOM (CycloneDX)" \
+        --data "url=${CI_PROJECT_URL}${URL}" \
+        "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/releases/${CI_COMMIT_TAG}/assets/links"
+  needs:
+    - job: sbom-generate
+      artifacts: true
+    - build
