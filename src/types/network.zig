@@ -13,13 +13,12 @@ const testing = std.testing;
 // Shared Helpers
 // ============================================================================
 
-/// Convert an ASCII hex digit to its integer value (0-15), or null if invalid.
-fn hexDigitToInt(c: u8) ?u8 {
-    if (c >= '0' and c <= '9') return c - '0';
-    if (c >= 'a' and c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' and c <= 'F') return c - 'A' + 10;
-    return null;
-}
+// Q45: hex-digit helpers moved to `types/network/hex.zig` so the Ipv6 and
+// Mac parsers can share them from dedicated per-type files once the split
+// lands. The `hexDigitToInt` alias keeps every existing call site working
+// byte-for-byte.
+const hex = @import("network/hex.zig");
+const hexDigitToInt = hex.hexDigitToInt;
 
 // ============================================================================
 // Error Type
