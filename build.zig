@@ -71,6 +71,22 @@ pub fn build(b: *std.Build) void {
     const run_fuzz_tests = b.addRunArtifact(fuzz_tests);
     fuzz_step.dependOn(&run_fuzz_tests.step);
 
+    // Parser edge-case regression tests (Q33: IPv4 leading-zero, IPv6 ::
+    // duplication, URL userinfo, Subnet prefix boundaries).
+    const parser_edges_step = b.step("test-parser-edges", "Run parser edge-case regression tests");
+    const parser_edges_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/parser_edge_cases.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "advanced_types", .module = module },
+            },
+        }),
+    });
+    const run_parser_edges_tests = b.addRunArtifact(parser_edges_tests);
+    parser_edges_step.dependOn(&run_parser_edges_tests.step);
+
     // Performance tests (dataset-level workflows and bulk operations)
     const performance_step = b.step("test-performance", "Run performance tests");
     const performance_tests = b.addTest(.{
