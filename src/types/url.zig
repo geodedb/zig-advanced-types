@@ -33,8 +33,18 @@ pub const ParseError = error{
 /// Domain names are validated per RFC 952 / RFC 1123 rules:
 /// - Labels separated by dots, each 1-63 characters
 /// - Total length <= 253 characters
-/// - Valid characters: alphanumeric + hyphen
+/// - Valid characters: alphanumeric + hyphen (ASCII only; IDN / Punycode
+///   is out of scope -- see SECURITY.md)
 /// - No leading/trailing hyphens per label
+///
+/// # Lifetime
+///
+/// `Domain` does not own its bytes. The `raw` slice (and every `[]const u8`
+/// returned by `tld()`, `registeredDomain()`, and the `DomainLabelIterator`
+/// returned by `labels()`) aliases the original `input` passed to
+/// `Domain.parse`. Callers must keep that buffer alive for as long as any
+/// `Domain`, label slice, or iterator derived from it is in use. Copying
+/// bytes out (e.g., via `std.mem.Allocator.dupe`) transfers ownership.
 pub const Domain = struct {
     raw: []const u8,
 
@@ -148,7 +158,24 @@ pub const DomainLabelIterator = struct {
 /// A parsed URL stored as slices into the original input string.
 ///
 /// Provides zero-allocation parsing of URLs into their component parts:
-/// scheme, host, port, path, query, and fragment.
+/// scheme, optional userinfo, host, port, path, query, and fragment.
+///
+/// # Lifetime
+///
+/// `Url` does not own its bytes. Every slice-typed field (`raw`, `scheme`,
+/// `userinfo`, `host`, `path`, `query`, `fragment`) is a sub-slice of the
+/// `input` passed to `Url.parse`. Callers must keep that buffer alive for
+/// as long as any field of the `Url` (or a `Domain` obtained via
+/// `Url.domain()`) is in use. Copying bytes out (e.g., via
+/// `std.mem.Allocator.dupe`) transfers ownership.
+///
+/// # Security
+///
+/// `userinfo` is stripped from the authority by `parse`, never interpreted
+/// as host. This closes the `evil.com@trusted.com` SSRF/phishing class.
+/// Hosts containing control bytes (< 0x21, 0x7F) or any of `< > " \` are
+/// rejected with `ParseError.InvalidHostChar`. Leading-zero ports
+/// (e.g., `:01`, `:007`) are rejected with `ParseError.InvalidPort`.
 pub const Url = struct {
     raw: []const u8,
     scheme: []const u8,
