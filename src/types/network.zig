@@ -146,6 +146,29 @@ pub const Ipv4Addr = struct {
         // 224.0.0.0 - 239.255.255.255
         return self.octets[0] >= 224 and self.octets[0] <= 239;
     }
+
+    /// Returns true if this IPv4 address is safe to use as the target of an
+    /// outbound HTTP/network fetch (SSRF defense). Rejects loopback, private
+    /// (RFC 1918), link-local (169.254/16), CGNAT (100.64/10), multicast
+    /// (224/4), broadcast / unspecified (255.255.255.255 / 0.0.0.0), and
+    /// reserved (240/4) ranges.
+    pub fn isSafeForOutboundFetch(self: Self) bool {
+        // 0.0.0.0/8 — "this network"; callers must not dial 0.0.0.0
+        if (self.octets[0] == 0) return false;
+        // 127.0.0.0/8 — loopback
+        if (self.isLoopback()) return false;
+        // 10/8, 172.16/12, 192.168/16 — RFC 1918 private
+        if (self.isPrivate()) return false;
+        // 169.254.0.0/16 — link-local (AWS/GCP metadata lives at 169.254.169.254)
+        if (self.octets[0] == 169 and self.octets[1] == 254) return false;
+        // 100.64.0.0/10 — Carrier-Grade NAT (RFC 6598)
+        if (self.octets[0] == 100 and (self.octets[1] >= 64 and self.octets[1] <= 127)) return false;
+        // 224/4 — multicast
+        if (self.isMulticast()) return false;
+        // 240/4 — reserved (includes 255.255.255.255 broadcast)
+        if (self.octets[0] >= 240) return false;
+        return true;
+    }
 };
 
 // ============================================================================
@@ -339,6 +362,44 @@ pub const Ipv6Addr = struct {
     /// Returns true if this is the loopback address (::1).
     pub fn isLoopback(self: Self) bool {
         return self.eql(localhost);
+    }
+
+    /// Returns true if this is the unspecified address (::).
+    pub fn isUnspecified(self: Self) bool {
+        return self.eql(any);
+    }
+
+    /// Returns true if this is a link-local unicast address (fe80::/10).
+    pub fn isLinkLocal(self: Self) bool {
+        return self.octets[0] == 0xFE and (self.octets[1] & 0xC0) == 0x80;
+    }
+
+    /// Returns true if this is a unique-local address (fc00::/7).
+    pub fn isUniqueLocal(self: Self) bool {
+        return (self.octets[0] & 0xFE) == 0xFC;
+    }
+
+    /// Returns true if this is a multicast address (ff00::/8).
+    pub fn isMulticast(self: Self) bool {
+        return self.octets[0] == 0xFF;
+    }
+
+    /// Returns true if this IPv6 address is safe to use as the target of an
+    /// outbound HTTP/network fetch (SSRF defense). Rejects loopback (::1),
+    /// unspecified (::), link-local (fe80::/10), unique-local (fc00::/7),
+    /// multicast (ff00::/8). IPv4-mapped addresses (::ffff:0:0/96) are
+    /// downcast to IPv4 and re-checked via `Ipv4Addr.isSafeForOutboundFetch`
+    /// so attackers cannot smuggle a link-local IPv4 target behind an IPv6
+    /// facade.
+    pub fn isSafeForOutboundFetch(self: Self) bool {
+        if (self.isUnspecified()) return false;
+        if (self.isLoopback()) return false;
+        if (self.isLinkLocal()) return false;
+        if (self.isUniqueLocal()) return false;
+        if (self.isMulticast()) return false;
+        // IPv4-mapped: re-run the v4 predicate on the embedded v4 address.
+        if (self.toIpv4()) |v4| return v4.isSafeForOutboundFetch();
+        return true;
     }
 
     /// Returns the mapped IPv4 address if this is an IPv4-mapped IPv6 address
@@ -741,6 +802,87 @@ test "Ipv6Addr.parse invalid addresses" {
     try testing.expectError(error.Overflow, Ipv6Addr.parse("10000::1"));
     // Too many groups
     try testing.expectError(error.InvalidFormat, Ipv6Addr.parse("1:2:3:4:5:6:7:8:9"));
+}
+
+test "Ipv4Addr.isSafeForOutboundFetch rejects SSRF-dangerous ranges" {
+    // Loopback
+    try testing.expect(!Ipv4Addr.localhost.isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("127.0.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("127.255.255.255")).isSafeForOutboundFetch());
+    // Private RFC 1918
+    try testing.expect(!(try Ipv4Addr.parse("10.0.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("172.16.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("172.31.255.255")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("192.168.1.1")).isSafeForOutboundFetch());
+    // Link-local (AWS metadata)
+    try testing.expect(!(try Ipv4Addr.parse("169.254.169.254")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("169.254.0.1")).isSafeForOutboundFetch());
+    // CGNAT 100.64/10
+    try testing.expect(!(try Ipv4Addr.parse("100.64.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("100.127.255.255")).isSafeForOutboundFetch());
+    // Multicast 224/4
+    try testing.expect(!(try Ipv4Addr.parse("224.0.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("239.255.255.255")).isSafeForOutboundFetch());
+    // Broadcast / unspecified / reserved
+    try testing.expect(!Ipv4Addr.any.isSafeForOutboundFetch()); // 0.0.0.0
+    try testing.expect(!(try Ipv4Addr.parse("0.1.2.3")).isSafeForOutboundFetch());
+    try testing.expect(!Ipv4Addr.broadcast.isSafeForOutboundFetch()); // 255.255.255.255
+    try testing.expect(!(try Ipv4Addr.parse("240.0.0.1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv4Addr.parse("255.0.0.1")).isSafeForOutboundFetch());
+
+    // Safe public addresses
+    try testing.expect((try Ipv4Addr.parse("8.8.8.8")).isSafeForOutboundFetch());
+    try testing.expect((try Ipv4Addr.parse("1.1.1.1")).isSafeForOutboundFetch());
+    try testing.expect((try Ipv4Addr.parse("100.63.255.255")).isSafeForOutboundFetch()); // just below CGNAT
+    try testing.expect((try Ipv4Addr.parse("100.128.0.1")).isSafeForOutboundFetch()); // just above CGNAT
+    try testing.expect((try Ipv4Addr.parse("169.253.0.1")).isSafeForOutboundFetch()); // just below link-local
+}
+
+test "Ipv6Addr.isSafeForOutboundFetch rejects SSRF-dangerous ranges" {
+    try testing.expect(!Ipv6Addr.localhost.isSafeForOutboundFetch()); // ::1
+    try testing.expect(!Ipv6Addr.any.isSafeForOutboundFetch()); // ::
+    // Link-local fe80::/10
+    try testing.expect(!(try Ipv6Addr.parse("fe80::1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv6Addr.parse("febf::1")).isSafeForOutboundFetch());
+    // Unique-local fc00::/7
+    try testing.expect(!(try Ipv6Addr.parse("fc00::1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv6Addr.parse("fd00::1")).isSafeForOutboundFetch());
+    // Multicast ff00::/8
+    try testing.expect(!(try Ipv6Addr.parse("ff00::1")).isSafeForOutboundFetch());
+    try testing.expect(!(try Ipv6Addr.parse("ff02::1")).isSafeForOutboundFetch());
+
+    // IPv4-mapped smuggling attempts must be rejected via v4 predicate.
+    // (Parser does not yet accept dotted-v4 form inside v6 literals, so we
+    // construct the mapped addresses from the hex form: ::ffff:<hi>:<lo>.)
+    // 169.254.169.254 -> a9fe:a9fe
+    try testing.expect(!(try Ipv6Addr.parse("::ffff:a9fe:a9fe")).isSafeForOutboundFetch());
+    // 127.0.0.1 -> 7f00:0001
+    try testing.expect(!(try Ipv6Addr.parse("::ffff:7f00:1")).isSafeForOutboundFetch());
+    // 10.0.0.1 -> 0a00:0001
+    try testing.expect(!(try Ipv6Addr.parse("::ffff:a00:1")).isSafeForOutboundFetch());
+    // 0.0.0.0
+    try testing.expect(!(try Ipv6Addr.parse("::ffff:0:0")).isSafeForOutboundFetch());
+    // 100.64.0.1 -> 6440:0001 (CGNAT smuggled)
+    try testing.expect(!(try Ipv6Addr.parse("::ffff:6440:1")).isSafeForOutboundFetch());
+
+    // Safe public v6
+    try testing.expect((try Ipv6Addr.parse("2001:db8::1")).isSafeForOutboundFetch());
+    try testing.expect((try Ipv6Addr.parse("2606:4700:4700::1111")).isSafeForOutboundFetch());
+    // Safe public v4 (8.8.8.8 -> 0808:0808) smuggled through mapped form
+    try testing.expect((try Ipv6Addr.parse("::ffff:808:808")).isSafeForOutboundFetch());
+}
+
+test "Ipv6Addr classification predicates" {
+    try testing.expect(Ipv6Addr.any.isUnspecified());
+    try testing.expect(!Ipv6Addr.localhost.isUnspecified());
+    try testing.expect((try Ipv6Addr.parse("fe80::1")).isLinkLocal());
+    try testing.expect((try Ipv6Addr.parse("febf::1")).isLinkLocal());
+    try testing.expect(!(try Ipv6Addr.parse("fec0::1")).isLinkLocal()); // deprecated site-local not link-local
+    try testing.expect((try Ipv6Addr.parse("fc00::1")).isUniqueLocal());
+    try testing.expect((try Ipv6Addr.parse("fd00::1")).isUniqueLocal());
+    try testing.expect(!(try Ipv6Addr.parse("fe00::1")).isUniqueLocal());
+    try testing.expect((try Ipv6Addr.parse("ff00::1")).isMulticast());
+    try testing.expect(!(try Ipv6Addr.parse("fe80::1")).isMulticast());
 }
 
 test "Ipv6Addr.format" {
