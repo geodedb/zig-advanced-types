@@ -315,11 +315,13 @@ pub const Ipv6Addr = struct {
         return group_count;
     }
 
-    /// Write this address in RFC 5952 canonical notation to the given writer.
-    pub fn format(self: Self, writer: anytype) !void {
-        const segs = self.segments();
-
-        // Find the longest run of zero segments for :: compression
+    /// Find the longest run of consecutive zero segments in an 8-segment IPv6
+    /// address. Returns `{ .start, .len }` where `len >= 2` is the RFC 5952
+    /// compression threshold; returns `len == 0` (and `start = 8`) when no
+    /// such run exists. Q18: extracted from `Ipv6Addr.format` to keep that
+    /// method flat (was 5-deep nested).
+    const ZeroRun = struct { start: usize, len: usize };
+    fn longestZeroRun(segs: [8]u16) ZeroRun {
         var best_start: usize = 8;
         var best_len: usize = 0;
         var run_start: usize = 0;
@@ -339,17 +341,21 @@ pub const Ipv6Addr = struct {
         }
 
         // Only compress runs of 2 or more zeros
-        if (best_len < 2) {
-            best_start = 8;
-            best_len = 0;
-        }
+        if (best_len < 2) return .{ .start = 8, .len = 0 };
+        return .{ .start = best_start, .len = best_len };
+    }
+
+    /// Write this address in RFC 5952 canonical notation to the given writer.
+    pub fn format(self: Self, writer: anytype) !void {
+        const segs = self.segments();
+        const run = longestZeroRun(segs);
 
         var i: usize = 0;
         var need_colon = false;
         while (i < 8) {
-            if (i == best_start) {
+            if (i == run.start) {
                 try writer.writeAll("::");
-                i += best_len;
+                i += run.len;
                 need_colon = false;
                 continue;
             }
