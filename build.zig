@@ -118,6 +118,24 @@ pub fn build(b: *std.Build) void {
     const run_example = b.addRunArtifact(example);
     example_step.dependOn(&run_example.step);
 
+    // Benchmark harness (I1). Not a test -- this is an executable that
+    // prints ns/op timings. CI runs it to verify the harness compiles and
+    // exits 0; numeric thresholds are explicitly NOT gated on.
+    const bench_step = b.step("bench", "Run micro-benchmarks");
+    const bench_exe = b.addExecutable(.{
+        .name = "bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("bench/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "advanced_types", .module = module },
+            },
+        }),
+    });
+    const run_bench = b.addRunArtifact(bench_exe);
+    bench_step.dependOn(&run_bench.step);
+
     // Check step for IDE integration (fast syntax validation)
     const check_step = b.step("check", "Check for compilation errors");
     const check = b.addTest(.{
