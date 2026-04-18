@@ -495,6 +495,11 @@ pub const Subnet = struct {
         if (prefix_len == 0) return true;
         if (prefix_len == 32) return net.eql(addr);
 
+        // At this point prefix_len is in 1..=31, so (32 - prefix_len) fits in u5.
+        // `Subnet.init` enforces this on construction; the defensive branches
+        // above cover struct-literal bypass. Assert documents the invariant
+        // for ReleaseSafe/Debug and is elided in ReleaseFast.
+        std.debug.assert(prefix_len > 0 and prefix_len < 32);
         const shift: u5 = @intCast(@as(u8, 32) - prefix_len);
         const mask: u32 = @as(u32, 0xFFFFFFFF) << shift;
         return (net.toU32() & mask) == (addr.toU32() & mask);
