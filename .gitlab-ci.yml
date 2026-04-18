@@ -31,6 +31,7 @@ stages:
   - build
   - test
   - fuzz
+  - coverage
   - security
   - sbom
   - release
@@ -291,6 +292,41 @@ test-linux-aarch64:
       allow_failure: true
     - when: manual
       allow_failure: true
+  allow_failure: true
+  needs:
+    - build
+
+# ============================================================================
+# Coverage (GAP-0011 / Q31)
+#
+# Runs kcov against the main unit-test binary and publishes the HTML
+# report as a pipeline artifact. Report-only -- no percentage threshold
+# gates the pipeline. A follow-up issue will add the gate once a
+# stable baseline has been collected.
+# ============================================================================
+coverage:
+  stage: coverage
+  image: debian:bookworm-slim
+  before_script:
+    - apt-get update
+    - apt-get install -y kcov
+    - *install-zig
+  script:
+    # Build the unit-test binary with debug info so kcov can decode frames.
+    - zig build test -Doptimize=Debug --summary all
+    # Locate the test binary in the zig-cache (Zig puts it under .zig-cache/o/<hash>/test).
+    - TEST_BIN=$(find .zig-cache/o -name test -type f -executable | head -n1)
+    - echo "Coverage target $TEST_BIN"
+    - mkdir -p coverage
+    - kcov --include-path=src coverage "$TEST_BIN" || true
+    - ls -la coverage/
+  coverage: '/Total.*\s(\d+\.\d+)%/'
+  artifacts:
+    name: "coverage-${CI_COMMIT_SHORT_SHA}"
+    paths:
+      - coverage/
+    expire_in: 1 month
+    expose_as: "Coverage Report"
   allow_failure: true
   needs:
     - build
