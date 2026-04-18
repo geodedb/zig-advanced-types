@@ -19,6 +19,7 @@ pub const ParseError = error{
     EmptyInput,
     InvalidScheme,
     InvalidPort,
+    InvalidHostChar,
     InvalidDomain,
     MissingHost,
 };
@@ -151,6 +152,7 @@ pub const DomainLabelIterator = struct {
 pub const Url = struct {
     raw: []const u8,
     scheme: []const u8,
+    userinfo: ?[]const u8,
     host: []const u8,
     port: ?u16,
     path: []const u8,
@@ -204,32 +206,53 @@ pub const Url = struct {
 
         if (authority.len == 0) return ParseError.MissingHost;
 
-        // Parse host and port from authority
+        // Strip userinfo (`user[:pass]@`) from the authority.
+        // Per SAST-05: any `@` in the authority splits userinfo (left) from
+        // host (right). Multiple `@` are treated as "last `@` wins" per WHATWG
+        // URL semantics so `evil.com@trusted.com` cannot be misread as host.
+        var userinfo: ?[]const u8 = null;
+        var host_part: []const u8 = authority;
+        if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at_pos| {
+            userinfo = authority[0..at_pos];
+            host_part = authority[at_pos + 1 ..];
+        }
+        if (host_part.len == 0) return ParseError.MissingHost;
+
+        // Parse host and port from host_part.
         // Handle IPv6 literals: [::1]:port
         var host: []const u8 = undefined;
         var port_val: ?u16 = null;
 
-        if (authority[0] == '[') {
+        if (host_part[0] == '[') {
             // IPv6 literal
-            const bracket_end = std.mem.indexOfScalar(u8, authority, ']') orelse
+            const bracket_end = std.mem.indexOfScalar(u8, host_part, ']') orelse
                 return ParseError.InvalidFormat;
-            host = authority[0 .. bracket_end + 1];
-            const after_bracket = authority[bracket_end + 1 ..];
+            host = host_part[0 .. bracket_end + 1];
+            const after_bracket = host_part[bracket_end + 1 ..];
             if (after_bracket.len > 0) {
                 if (after_bracket[0] != ':') return ParseError.InvalidFormat;
-                port_val = parsePort(after_bracket[1..]) orelse return ParseError.InvalidPort;
+                port_val = try parsePortStrict(after_bracket[1..]);
             }
         } else {
             // Regular host or IPv4
-            if (std.mem.lastIndexOfScalar(u8, authority, ':')) |colon_pos| {
-                host = authority[0..colon_pos];
-                port_val = parsePort(authority[colon_pos + 1 ..]) orelse return ParseError.InvalidPort;
+            if (std.mem.lastIndexOfScalar(u8, host_part, ':')) |colon_pos| {
+                host = host_part[0..colon_pos];
+                port_val = try parsePortStrict(host_part[colon_pos + 1 ..]);
             } else {
-                host = authority;
+                host = host_part;
             }
         }
 
         if (host.len == 0) return ParseError.MissingHost;
+
+        // SAST-07: reject unsafe/control bytes in host. For the IPv6 literal
+        // `[...]`, only validate the inside.
+        if (host[0] == '[') {
+            if (host.len < 2 or host[host.len - 1] != ']') return ParseError.InvalidFormat;
+            try validateHostChars(host[1 .. host.len - 1]);
+        } else {
+            try validateHostChars(host);
+        }
 
         // If path is empty, default to "/"
         const final_path = if (path.len == 0) "/" else path;
@@ -237,12 +260,23 @@ pub const Url = struct {
         return Url{
             .raw = input,
             .scheme = scheme,
+            .userinfo = userinfo,
             .host = host,
             .port = port_val,
             .path = final_path,
             .query = query,
             .fragment = fragment,
         };
+    }
+
+    /// Reject unsafe/control bytes in a host string per SAST-07.
+    /// Disallows: bytes < 0x21 (space and control chars), 0x7F (DEL),
+    /// and explicit HTML/URL-breaking bytes <, >, ", \.
+    fn validateHostChars(host: []const u8) ParseError!void {
+        for (host) |c| {
+            if (c < 0x21 or c == 0x7F) return ParseError.InvalidHostChar;
+            if (c == '<' or c == '>' or c == '"' or c == '\\') return ParseError.InvalidHostChar;
+        }
     }
 
     /// Return the effective port: the explicit port if present, otherwise the
@@ -279,6 +313,10 @@ pub const Url = struct {
     pub fn format(self: Url, writer: anytype) !void {
         try writer.writeAll(self.scheme);
         try writer.writeAll("://");
+        if (self.userinfo) |ui| {
+            try writer.writeAll(ui);
+            try writer.writeByte('@');
+        }
         try writer.writeAll(self.host);
         if (self.port) |p| {
             try writer.print(":{d}", .{p});
@@ -294,9 +332,18 @@ pub const Url = struct {
         }
     }
 
-    fn parsePort(s: []const u8) ?u16 {
-        if (s.len == 0) return null;
-        return std.fmt.parseInt(u16, s, 10) catch null;
+    /// Parse a port, rejecting leading zeros (NEW-01) and any non-digit.
+    /// Empty input is an error (caller relies on explicit `:` to call this).
+    fn parsePortStrict(s: []const u8) ParseError!?u16 {
+        if (s.len == 0) return ParseError.InvalidPort;
+        // Reject leading zero when length > 1: "01", "007", "0123" -- but
+        // the single-digit "0" is allowed (port 0 is a valid bind wildcard).
+        if (s.len > 1 and s[0] == '0') return ParseError.InvalidPort;
+        for (s) |c| {
+            if (!std.ascii.isDigit(c)) return ParseError.InvalidPort;
+        }
+        const parsed = std.fmt.parseInt(u16, s, 10) catch return ParseError.InvalidPort;
+        return parsed;
     }
 
     fn looksLikeIpv4(host: []const u8) bool {
@@ -635,4 +682,81 @@ test "Url: raw preserves original input" {
     const input = "https://Example.COM:443/Path?Q=1#F";
     const u = try Url.parse(input);
     try std.testing.expectEqualStrings(input, u.raw);
+}
+
+test "Url: strips userinfo from authority (SAST-05)" {
+    // The canonical SSRF-laundering example: evil.com@trusted.com. The host
+    // must be "trusted.com", not "evil.com".
+    const u = try Url.parse("http://evil.com@trusted.com/path");
+    try std.testing.expectEqualStrings("trusted.com", u.host);
+    try std.testing.expectEqualStrings("evil.com", u.userinfo.?);
+    try std.testing.expectEqualStrings("/path", u.path);
+}
+
+test "Url: userinfo with password" {
+    const u = try Url.parse("https://user:pass@example.com:8443/");
+    try std.testing.expectEqualStrings("example.com", u.host);
+    try std.testing.expectEqualStrings("user:pass", u.userinfo.?);
+    try std.testing.expectEqual(@as(?u16, 8443), u.port);
+}
+
+test "Url: no userinfo -> field is null" {
+    const u = try Url.parse("http://example.com/");
+    try std.testing.expectEqual(@as(?[]const u8, null), u.userinfo);
+}
+
+test "Url: userinfo before IPv6 literal host" {
+    const u = try Url.parse("http://user@[::1]:8080/x");
+    try std.testing.expectEqualStrings("[::1]", u.host);
+    try std.testing.expectEqualStrings("user", u.userinfo.?);
+    try std.testing.expectEqual(@as(?u16, 8080), u.port);
+}
+
+test "Url: multiple @ in authority uses last (WHATWG)" {
+    const u = try Url.parse("http://a@b@trusted.com/");
+    try std.testing.expectEqualStrings("trusted.com", u.host);
+    try std.testing.expectEqualStrings("a@b", u.userinfo.?);
+}
+
+test "Url: reject control byte in host (SAST-07)" {
+    try std.testing.expectError(
+        ParseError.InvalidHostChar,
+        Url.parse("http://exa\x00mple.com/"),
+    );
+    try std.testing.expectError(
+        ParseError.InvalidHostChar,
+        Url.parse("http://exa\x01mple.com/"),
+    );
+    try std.testing.expectError(
+        ParseError.InvalidHostChar,
+        Url.parse("http://exa\x7Fmple.com/"),
+    );
+}
+
+test "Url: reject unsafe bytes in host (SAST-07)" {
+    try std.testing.expectError(ParseError.InvalidHostChar, Url.parse("http://a<b.com/"));
+    try std.testing.expectError(ParseError.InvalidHostChar, Url.parse("http://a>b.com/"));
+    try std.testing.expectError(ParseError.InvalidHostChar, Url.parse("http://a\"b.com/"));
+    try std.testing.expectError(ParseError.InvalidHostChar, Url.parse("http://a\\b.com/"));
+    try std.testing.expectError(ParseError.InvalidHostChar, Url.parse("http://a b.com/"));
+}
+
+test "Url: reject leading-zero port (NEW-01)" {
+    try std.testing.expectError(ParseError.InvalidPort, Url.parse("http://example.com:01/"));
+    try std.testing.expectError(ParseError.InvalidPort, Url.parse("http://example.com:007/"));
+    try std.testing.expectError(ParseError.InvalidPort, Url.parse("http://example.com:080/"));
+    // Single "0" still allowed (port 0 is a valid bind-any sentinel).
+    const u = try Url.parse("http://example.com:0/");
+    try std.testing.expectEqual(@as(?u16, 0), u.port);
+}
+
+test "Url: reject empty port after colon" {
+    try std.testing.expectError(ParseError.InvalidPort, Url.parse("http://example.com:/path"));
+}
+
+test "Url: format roundtrip with userinfo" {
+    const u = try Url.parse("http://user:pass@host.com:8080/p");
+    var buf: [512]u8 = undefined;
+    const result = try std.fmt.bufPrint(&buf, "{f}", .{u});
+    try std.testing.expectEqualStrings("http://user:pass@host.com:8080/p", result);
 }
