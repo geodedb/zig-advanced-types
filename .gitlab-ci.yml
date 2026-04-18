@@ -199,15 +199,23 @@ test-parser-edges:
   needs:
     - build
 
-# Benchmark harness (I1): exit-0 gate only; numbers inspected locally.
+# BENCH-02 (#58): bench regression gate.
+#
+# Runs `zig build bench -Doptimize=ReleaseFast` and compares the reported
+# min-of-N ns/op against bench/baseline.json. Fails the job when any
+# benchmark exceeds baseline * 1.30 (30% slower). The 30% tolerance is
+# calibrated against the 11-17% intra-run jitter BENCH-01 measured on the
+# shared developer workstation -- a tighter gate would flap. See
+# ci/bench_gate.py's module docstring and
+# docs/audit/gap-close-implement-log.md (CP-3) for the derivation.
 bench:
   stage: test
   image: debian:bookworm-slim
   before_script:
     - *install-zig
+    - apt-get install -y python3
   script:
-    - zig build bench -Doptimize=ReleaseFast
-  allow_failure: true
+    - python3 ci/bench_gate.py
   needs:
     - build
 

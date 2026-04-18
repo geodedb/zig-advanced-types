@@ -365,4 +365,19 @@ pub fn main() !void {
             r.opsPerSec(),
         });
     }
+
+    // BENCH-02 (#58): machine-readable summary for the CI regression gate.
+    // The `BENCH_JSON_BEGIN`/`BENCH_JSON_END` sentinels let a grep-based
+    // extractor slice out the JSON payload without depending on a
+    // dedicated output file. Payload is a single-line JSON object mapping
+    // benchmark name -> min_ns_per_op (min-of-N, the same number the table
+    // reports under "min ns/op").
+    p("BENCH_JSON_BEGIN\n", .{});
+    p("{{", .{});
+    for (results, 0..) |r, idx| {
+        if (idx != 0) p(",", .{});
+        p("\"{s}\":{d:.4}", .{ r.name, r.min_ns_per_op });
+    }
+    p("}}\n", .{});
+    p("BENCH_JSON_END\n", .{});
 }

@@ -1,0 +1,17 @@
+{
+  "_comment": "BENCH-02 (#58) regression-gate baseline. Values are the median ns/op across three fresh ReleaseFast runs on the reporter's shared developer workstation (2026-04-18). The CI gate in ci/bench_gate.py fails a pipeline when the current min-of-N exceeds baseline * tolerance. Tolerance is deliberately loose (30%) because intra-run jitter on shared hardware measured 11-17% on the BENCH-01 harness; a tighter gate would flap. Re-baseline with `zig build bench -Doptimize=ReleaseFast` on the same host and copy the BENCH_JSON payload values here.",
+  "tolerance": 1.30,
+  "units": "ns/op (min-of-N, N=9 rounds of 100000 iterations each)",
+  "benchmarks": {
+    "Ipv4Addr.parse": 13.76,
+    "Ipv6Addr.parse": 30.10,
+    "IpAddr.parse": 21.44,
+    "Url.parse": 65.03,
+    "Ipv4Addr.format": 31.22,
+    "Mac.format": 57.40,
+    "Subnet.contains": 2.28,
+    "VectorF32.cosineDistance": 0.91,
+    "LatLon.haversineDistance": 10.60,
+    "LatLon.haversineBroadcast": 53.24
+  }
+}
