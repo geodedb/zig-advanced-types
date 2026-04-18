@@ -213,6 +213,119 @@ fn roundHaversine() !u64 {
     return elapsed;
 }
 
+// ----------------------------------------------------------------------------
+// BENCH-03 (#59): expanded corpus — format paths, Subnet.contains, IpAddr.parse,
+// and the 1-to-N haversine broadcast helper (S1 / PRECOMP-01).
+// ----------------------------------------------------------------------------
+
+fn roundIpv4Format() !u64 {
+    const addrs = [_]lib.Ipv4Addr{
+        .{ .octets = .{ 127, 0, 0, 1 } },
+        .{ .octets = .{ 192, 168, 1, 1 } },
+        .{ .octets = .{ 8, 8, 8, 8 } },
+        .{ .octets = .{ 255, 255, 255, 255 } },
+        .{ .octets = .{ 10, 0, 0, 42 } },
+    };
+    var buf: [32]u8 = undefined;
+    const t0 = nowNs();
+    var sink: usize = 0;
+    for (0..iterations_per_round) |i| {
+        const out = try std.fmt.bufPrint(&buf, "{f}", .{addrs[i % addrs.len]});
+        sink ^= out.len;
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
+fn roundMacFormat() !u64 {
+    const macs = [_]lib.Mac{
+        .{ .octets = .{ 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF } },
+        .{ .octets = .{ 0x00, 0x11, 0x22, 0x33, 0x44, 0x55 } },
+        lib.Mac.broadcast,
+        .{ .octets = .{ 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01 } },
+        .{ .octets = .{ 0x01, 0x23, 0x45, 0x67, 0x89, 0xAB } },
+    };
+    var buf: [32]u8 = undefined;
+    const t0 = nowNs();
+    var sink: usize = 0;
+    for (0..iterations_per_round) |i| {
+        const out = try std.fmt.bufPrint(&buf, "{f}", .{macs[i % macs.len]});
+        sink ^= out.len;
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
+fn roundSubnetContains() !u64 {
+    const net = try lib.Subnet.parse("192.168.1.0/24");
+    const addrs = [_]lib.IpAddr{
+        try lib.IpAddr.parse("192.168.1.1"),
+        try lib.IpAddr.parse("192.168.1.200"),
+        try lib.IpAddr.parse("192.168.2.1"), // outside
+        try lib.IpAddr.parse("10.0.0.1"), // outside
+        try lib.IpAddr.parse("192.168.1.42"),
+    };
+    const t0 = nowNs();
+    var sink: u32 = 0;
+    for (0..iterations_per_round) |i| {
+        sink +%= if (net.contains(addrs[i % addrs.len])) 1 else 0;
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
+fn roundIpAddrParse() !u64 {
+    // Mixed v4/v6 inputs so the detect-by-colon branch is exercised evenly.
+    const inputs = [_][]const u8{
+        "127.0.0.1",
+        "::1",
+        "192.168.1.1",
+        "2001:db8::1",
+        "8.8.8.8",
+        "fe80::1",
+    };
+    const t0 = nowNs();
+    var sink: u8 = 0;
+    for (0..iterations_per_round) |i| {
+        const addr = try lib.IpAddr.parse(inputs[i % inputs.len]);
+        sink ^= switch (addr) {
+            .v4 => |v| v.octets[0],
+            .v6 => |v| v.octets[0],
+        };
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
+fn roundHaversineBroadcast() !u64 {
+    // 1-to-N sweep using the precomputed-origin helper. Mirrors the real
+    // "distance from user to each POI" hot path this helper targets.
+    const origin = try lib.LatLon.init(37.7749, -122.4194);
+    const dests = [_]lib.LatLon{
+        try lib.LatLon.init(40.7128, -74.0060),
+        try lib.LatLon.init(51.5074, -0.1278),
+        try lib.LatLon.init(-33.8688, 151.2093),
+        try lib.LatLon.init(35.6762, 139.6503),
+        try lib.LatLon.init(-23.5505, -46.6333),
+        try lib.LatLon.init(55.7558, 37.6173),
+        try lib.LatLon.init(-34.6037, -58.3816),
+        try lib.LatLon.init(1.3521, 103.8198),
+    };
+    const broadcast = origin.haversineBroadcast();
+    const t0 = nowNs();
+    var sink: f64 = 0.0;
+    for (0..iterations_per_round) |i| {
+        sink += broadcast.distanceTo(dests[i % dests.len]);
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
 pub fn main() !void {
     const p = std.debug.print;
     p(
@@ -232,9 +345,14 @@ pub fn main() !void {
     const results = [_]BenchResult{
         try runRounds("Ipv4Addr.parse", roundIpv4Parse),
         try runRounds("Ipv6Addr.parse", roundIpv6Parse),
+        try runRounds("IpAddr.parse", roundIpAddrParse),
         try runRounds("Url.parse", roundUrlParse),
+        try runRounds("Ipv4Addr.format", roundIpv4Format),
+        try runRounds("Mac.format", roundMacFormat),
+        try runRounds("Subnet.contains", roundSubnetContains),
         try runRounds("VectorF32.cosineDistance", roundCosineDistance),
         try runRounds("LatLon.haversineDistance", roundHaversine),
+        try runRounds("LatLon.haversineBroadcast", roundHaversineBroadcast),
     };
 
     for (results) |r| {

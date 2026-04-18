@@ -149,6 +149,61 @@ pub const LatLon = struct {
         return earth_radius_m * c;
     }
 
+    /// Precomputed origin cache for 1-to-N haversine broadcasts.
+    ///
+    /// When repeatedly measuring distances from a single origin to many
+    /// destinations (nearest-neighbour search, geofencing, etc.), half the
+    /// trig work per call is redundant: `lat1_rad`, `@cos(lat1)`, and the
+    /// conversion factor are invariant across the loop. `HaversineOrigin`
+    /// caches those once so `distanceTo` only needs the per-destination trig.
+    ///
+    /// Numerically identical to `haversineDistance` (same formula, same
+    /// operand ordering); intended as a hot-loop helper, not a new physics
+    /// model.
+    pub const HaversineOrigin = struct {
+        lat1_rad: f64,
+        lon1_deg: f64,
+        cos_lat1: f64,
+
+        /// Precompute the origin-side terms of the haversine formula.
+        pub fn init(origin: LatLon) HaversineOrigin {
+            const to_rad = math.pi / 180.0;
+            const lat1 = origin.lat * to_rad;
+            return .{
+                .lat1_rad = lat1,
+                .lon1_deg = origin.lon,
+                .cos_lat1 = @cos(lat1),
+            };
+        }
+
+        /// Distance in meters from the cached origin to `other`, using the
+        /// same haversine formula as `LatLon.haversineDistance`.
+        pub fn distanceTo(self: HaversineOrigin, other: LatLon) f64 {
+            const to_rad = math.pi / 180.0;
+
+            const lat2 = other.lat * to_rad;
+            const d_lat = lat2 - self.lat1_rad;
+            const d_lon = (other.lon - self.lon1_deg) * to_rad;
+
+            const sin_d_lat_2 = @sin(d_lat / 2.0);
+            const sin_d_lon_2 = @sin(d_lon / 2.0);
+
+            const a = sin_d_lat_2 * sin_d_lat_2 +
+                self.cos_lat1 * @cos(lat2) * sin_d_lon_2 * sin_d_lon_2;
+
+            const c = 2.0 * math.atan2(@sqrt(a), @sqrt(1.0 - a));
+
+            return earth_radius_m * c;
+        }
+    };
+
+    /// Convenience wrapper: build a `HaversineOrigin` from `self`. Prefer
+    /// calling `HaversineOrigin.init(self)` directly if you want to name the
+    /// precomputed cache at the call site.
+    pub fn haversineBroadcast(self: LatLon) HaversineOrigin {
+        return HaversineOrigin.init(self);
+    }
+
     /// Format as `(lat, lon)`, e.g. `(37.7749, -122.4194)`.
     pub fn format(self: LatLon, writer: anytype) !void {
         try writer.print("({d}, {d})", .{ self.lat, self.lon });
@@ -387,6 +442,33 @@ test "LatLon: haversine antimeridian" {
     // 2 degrees of longitude at the equator ≈ 222.4 km
     const expected: f64 = 2.0 * (math.pi / 180.0) * earth_radius_m;
     try testing.expectApproxEqAbs(expected, a.haversineDistance(b), 100.0);
+}
+
+test "LatLon: haversineBroadcast matches haversineDistance" {
+    // S1 / PRECOMP-01: the broadcast helper caches origin-side trig terms
+    // for 1-to-N sweeps. It MUST be numerically identical to the
+    // per-call formula for every (origin, destination) pair in a
+    // representative spread (equator, poles, antimeridian, same-point).
+    const origin = try LatLon.init(37.7749, -122.4194);
+    const dests = [_]LatLon{
+        try LatLon.init(37.7749, -122.4194), // same point
+        try LatLon.init(40.7128, -74.0060), // NYC
+        try LatLon.init(51.5074, -0.1278), // London
+        try LatLon.init(-33.8688, 151.2093), // Sydney
+        try LatLon.init(0.0, 0.0), // equator / prime meridian
+        try LatLon.init(90.0, 0.0), // north pole
+        try LatLon.init(-90.0, 0.0), // south pole
+        try LatLon.init(0.0, 179.9999), // near antimeridian
+    };
+    const broadcast = origin.haversineBroadcast();
+    for (dests) |d| {
+        const baseline = origin.haversineDistance(d);
+        const via_cache = broadcast.distanceTo(d);
+        // Bit-exact would be ideal but f64 rounding in the compiler's trig
+        // lowering can flip the last ulp; sub-millimeter absolute tolerance
+        // keeps the assertion meaningful for a 6,371 km sphere.
+        try testing.expectApproxEqAbs(baseline, via_cache, 1e-3);
+    }
 }
 
 test "LatLon: format" {
