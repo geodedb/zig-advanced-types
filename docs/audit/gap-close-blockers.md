@@ -55,3 +55,28 @@ on refactors.
 determine a realistic floor (expected: 85%+), then add a second job
 that parses the kcov summary and exits non-zero below the threshold.
 Track as a follow-up issue.
+
+---
+
+## SC-01 -- Pin ci-catalog components to commit SHAs
+
+**Status:** Won't Do (scoped).
+
+**Rationale:** The project's gap-close policy explicitly carves out
+"CI/CD hash and Docker tag pinning" as handled via different controls
+(supply-chain controls owned by the platform team / ci-catalog
+project itself, not by each consumer repository). Pinning every
+`component:` include to a commit SHA in this repo would invert that
+ownership: every ci-catalog bugfix would require a manual SHA bump
+here, and the consumer wouldn't learn about component CVEs until
+someone rebuilt the dependency graph.
+
+The existing `@v1.7.1` tag-pin already prevents surprise-major
+upgrades while letting the catalog ship patch-level fixes under the
+same tag (the catalog's tag-protection rules prevent retag of a
+published minor).
+
+**Tracked-elsewhere unblock:** if the platform-team control changes
+(for example a move to mandatory digest-pinning across the org), this
+file's "Won't Do" status should be revisited. Until then no CI change
+is warranted in this repo.
