@@ -29,6 +29,58 @@ pub const GeoError = error{
 const earth_radius_m: f64 = 6_371_000.0;
 
 // ============================================================================
+// Shared parse helpers
+// ============================================================================
+
+/// Parse a parenthesized, comma-separated tuple of `N` non-empty fields from
+/// `input`, trimming whitespace around each field. Accepts optional outer
+/// whitespace. Returns an array of N slices borrowed from `input`.
+///
+/// Examples:
+///   `parseTupleInParens(input, 2)` -> `(a, b)`
+///   `parseTupleInParens(input, 3)` -> `(a, b, c)`
+///
+/// Returns `GeoError.InvalidFormat` if the structure is malformed or the
+/// field count differs from `N`.
+fn parseTupleInParens(input: []const u8, comptime N: usize) GeoError![N][]const u8 {
+    if (N < 2) @compileError("parseTupleInParens requires N >= 2");
+
+    const trimmed = std.mem.trim(u8, input, &std.ascii.whitespace);
+
+    // Minimum length: 2 parens + (N-1) commas + N fields (>=1 byte each) = 2N+1
+    const min_len: usize = 2 * N + 1;
+    if (trimmed.len < min_len or trimmed[0] != '(' or trimmed[trimmed.len - 1] != ')') {
+        return GeoError.InvalidFormat;
+    }
+
+    const inner = trimmed[1 .. trimmed.len - 1];
+
+    var out: [N][]const u8 = undefined;
+    var start: usize = 0;
+    var field_index: usize = 0;
+
+    for (inner, 0..) |c, i| {
+        if (c == ',') {
+            if (field_index >= N - 1) return GeoError.InvalidFormat; // too many commas
+            const raw = inner[start..i];
+            const trimmed_field = std.mem.trim(u8, raw, &std.ascii.whitespace);
+            if (trimmed_field.len == 0) return GeoError.InvalidFormat;
+            out[field_index] = trimmed_field;
+            field_index += 1;
+            start = i + 1;
+        }
+    }
+
+    if (field_index != N - 1) return GeoError.InvalidFormat; // not enough commas
+    const raw_last = inner[start..];
+    const trimmed_last = std.mem.trim(u8, raw_last, &std.ascii.whitespace);
+    if (trimmed_last.len == 0) return GeoError.InvalidFormat;
+    out[N - 1] = trimmed_last;
+
+    return out;
+}
+
+// ============================================================================
 // LatLon
 // ============================================================================
 
@@ -104,26 +156,9 @@ pub const LatLon = struct {
     /// Returns `GeoError.LatitudeOutOfRange` / `GeoError.LongitudeOutOfRange`
     /// if the parsed values are out of range.
     pub fn parse(input: []const u8) GeoError!LatLon {
-        const trimmed = std.mem.trim(u8, input, &std.ascii.whitespace);
-
-        if (trimmed.len < 3 or trimmed[0] != '(' or trimmed[trimmed.len - 1] != ')') {
-            return GeoError.InvalidFormat;
-        }
-
-        const inner = trimmed[1 .. trimmed.len - 1];
-
-        const comma_pos = std.mem.indexOfScalar(u8, inner, ',') orelse return GeoError.InvalidFormat;
-
-        const lat_str = std.mem.trim(u8, inner[0..comma_pos], &std.ascii.whitespace);
-        const lon_str = std.mem.trim(u8, inner[comma_pos + 1 ..], &std.ascii.whitespace);
-
-        if (lat_str.len == 0 or lon_str.len == 0) {
-            return GeoError.InvalidFormat;
-        }
-
-        const lat = std.fmt.parseFloat(f64, lat_str) catch return GeoError.InvalidCharacter;
-        const lon = std.fmt.parseFloat(f64, lon_str) catch return GeoError.InvalidCharacter;
-
+        const fields = try parseTupleInParens(input, 2);
+        const lat = std.fmt.parseFloat(f64, fields[0]) catch return GeoError.InvalidCharacter;
+        const lon = std.fmt.parseFloat(f64, fields[1]) catch return GeoError.InvalidCharacter;
         return init(lat, lon);
     }
 };
@@ -174,34 +209,10 @@ pub const LatLonAlt = struct {
 
     /// Parse a `LatLonAlt` from the string format `(lat, lon, alt)`.
     pub fn parse(input: []const u8) GeoError!LatLonAlt {
-        const trimmed = std.mem.trim(u8, input, &std.ascii.whitespace);
-
-        if (trimmed.len < 5 or trimmed[0] != '(' or trimmed[trimmed.len - 1] != ')') {
-            return GeoError.InvalidFormat;
-        }
-
-        const inner = trimmed[1 .. trimmed.len - 1];
-
-        // Find first comma (separates lat from rest).
-        const first_comma = std.mem.indexOfScalar(u8, inner, ',') orelse return GeoError.InvalidFormat;
-
-        // Find second comma (separates lon from alt).
-        const rest = inner[first_comma + 1 ..];
-        const second_comma_rel = std.mem.indexOfScalar(u8, rest, ',') orelse return GeoError.InvalidFormat;
-        const second_comma = first_comma + 1 + second_comma_rel;
-
-        const lat_str = std.mem.trim(u8, inner[0..first_comma], &std.ascii.whitespace);
-        const lon_str = std.mem.trim(u8, inner[first_comma + 1 .. second_comma], &std.ascii.whitespace);
-        const alt_str = std.mem.trim(u8, inner[second_comma + 1 ..], &std.ascii.whitespace);
-
-        if (lat_str.len == 0 or lon_str.len == 0 or alt_str.len == 0) {
-            return GeoError.InvalidFormat;
-        }
-
-        const lat_val = std.fmt.parseFloat(f64, lat_str) catch return GeoError.InvalidCharacter;
-        const lon_val = std.fmt.parseFloat(f64, lon_str) catch return GeoError.InvalidCharacter;
-        const alt_val = std.fmt.parseFloat(f64, alt_str) catch return GeoError.InvalidCharacter;
-
+        const fields = try parseTupleInParens(input, 3);
+        const lat_val = std.fmt.parseFloat(f64, fields[0]) catch return GeoError.InvalidCharacter;
+        const lon_val = std.fmt.parseFloat(f64, fields[1]) catch return GeoError.InvalidCharacter;
+        const alt_val = std.fmt.parseFloat(f64, fields[2]) catch return GeoError.InvalidCharacter;
         return init(lat_val, lon_val, alt_val);
     }
 };
@@ -292,6 +303,8 @@ pub const GeoPoint = union(enum) {
         const inner = trimmed[1 .. trimmed.len - 1];
         const comma_count = std.mem.count(u8, inner, ",");
 
+        // Delegation keeps field-level validation and parseFloat in one place
+        // (parseTupleInParens, called by LatLon.parse / LatLonAlt.parse).
         return switch (comma_count) {
             1 => .{ .point_2d = try LatLon.parse(input) },
             2 => .{ .point_3d = try LatLonAlt.parse(input) },
