@@ -1,20 +1,22 @@
 # Full Codebase Audit Summary
 
-**Date:** 2026-04-18
+**Date:** 2026-04-18 (second pass)
 **Project:** devnw/zig/advanced-types
 **Platform:** GitLab (gitlab.com/devnw/zig/advanced-types)
-**Languages:** Zig 0.15.1+ (CI runs 0.16.0)
+**Languages:** Zig 0.16.0
 **Scope:** Full repo
 **Issue creation:** Authorized and performed
+**Prior audit:** commit `f3adc69` (same day, ~12 h earlier)
 
 ---
 
 ## Repository
 
 - Pure-Zig library extracted from Geode — portable value types (IPv4/v6, MAC, Subnet, URL, Domain, LatLon, GeoPoint, Vector, Range).
-- **17 public types, 4,609 LOC, 11 .zig files, 262 runnable tests**, zero runtime dependencies.
+- **14 `.zig` files, 303 runnable tests** (248 unit + 11 extensions + 9 integration + 16 parser-edges + 9 performance + 10 fuzz), zero runtime dependencies (`build.zig.zon:6 .dependencies = .{}`).
 - Apache-2.0. Single code owner `@benjiv` (bus-factor 1).
-- CI: `.gitlab-ci.yml` runs SAST, gitleaks, secret detection, dependency scan, SBOM generate+scan; unit tests across Debug/ReleaseSafe/ReleaseFast/ReleaseSmall; Zig tarball SHA-256 verified.
+- CI: `.gitlab-ci.yml` runs SAST / gitleaks / secret-detection / dependency-scan / SBOM; unit tests across Debug/ReleaseSafe/ReleaseFast/ReleaseSmall; cross-OS jobs (macOS, Windows, Linux-aarch64) gated `allow_failure: true`; fuzz 60 s manual/schedule; **kcov coverage report-only** (added `20b233c`).
+- No `.github/` workflows — GitHub is unused for this project.
 
 ---
 
@@ -22,122 +24,154 @@
 
 ### Gap Analysis
 
-**Requirements traced:** 22 (17 pre-existing + 5 new this run). Trace: 16 Implemented / 1 Partial / 5 Not Implemented / 0 Unknown.
+**Requirements traced:** 32 reconciled (up from 22). Trace: 26 Implemented / 2 Partial / 4 Not Implemented / 0 Unknown.
 
-| Status | Count |
-|--------|-------|
-| Implemented | 16 |
-| Partial | 1 (#21 AT-NFR-004) |
-| Not Implemented | 5 |
-| Unknown | 0 |
+| Status | Count | Percentage |
+|--------|-------|-----------|
+| Implemented | 26 | 81 % |
+| Partial | 2 | 6 % |
+| Not Implemented | 4 | 13 % |
+| Unknown | 0 | 0 % |
 
-**Open gaps after this phase: 10** (Critical 2 · High 3 · Medium 2 · Low 3).
+**Open gaps: 6** (Critical 0 · High 2 · Medium 1 · Low 3).
 
-**Refuted prior closures:** GAP-0011 (no coverage job in CI), GAP-0018 (fuzz broken on Zig 0.16).
+| Gap-ID | Title | Severity | State |
+|--------|-------|:--------:|-------|
+| GAP-0014 | Geode consumer integration | High | Blocked (external repo) |
+| GAP-0019 | Cross-platform CI runners (macOS/Windows/aarch64) | High | Partial (`allow_failure: true`) |
+| GAP-0017 | Geode integration-test port | Medium | Blocked |
+| GAP-0015 | `DateRange` type | Low | Deferred (upstream datetime) |
+| GAP-0016 | `st_*` helpers | Low | Deferred |
+| GAP-0023 | README/CHANGELOG test-count drift | Low | **New** (262/230 vs actual 303) |
 
-Test-count reconciliation: README 230 / ledger 272 → actual **262** (272 − 10 fuzz broken).
+**Closed since prior audit (5):** GAP-0011 coverage-in-CI, GAP-0018 fuzz-broken, GAP-0020 fuzz-signature, GAP-0021 extensions/perf/ReleaseSmall matrix, GAP-0022 test-count drift (ledgers only).
 
 ### Code Quality
 
-28 new findings (Q14–Q41); 10 of Q1–Q13 confirmed closed; Q5/Q10/Q11 partially reopen as Q20/Q33/Q36.
+**Top finding by PriorityScore:** Q42 — `README.md:14` claims "262 Tests ... fuzz suite currently broken under Zig 0.16"; both clauses are stale (actual 303, fuzz green). PriorityScore **64** (High). Tied: Q44 — `.cz.yaml` fails `pretty-format-yaml` hook on every clean checkout (64).
 
 | Severity | Count |
 |----------|-------|
-| Critical | 1 (Q30) |
-| High | 3 (Q26, Q25, Q36) |
-| Medium | 4 |
-| Low | 20 |
+| Critical | 0 |
+| High | 2 (Q42, Q44) |
+| Medium | 6 (Q45, Q16, Q43, Q20, Q18, Q19) |
+| Low | 2 (Q46, Q32) |
 
-**PriorityScore top finding:** Q30 — Fuzz suite broken on Zig 0.16 (score **80**).
-
-**Green baseline:** `zig fmt` clean, `zig build check` clean, 233/233 tests × 4 optimize modes. Doc coverage 80.9% overall / 95.0% excluding `root.zig` façade.
+**Tooling status:** PASS — `zig fmt --check`, `zig build check`, `zig build test` (248/248), all Zig test suites (303 total), pre-commit Zig/whitespace/JSON/YAML-schema hooks. FAIL — `markdownlint` (7 issues in docs/templates), `pretty-format-yaml` (`.cz.yaml`). SKIP — `shellcheck` (no shell scripts).
 
 ### Performance
 
+**Top finding by PerfScore:** **BENCH-01 / I2** — bench harness has no warm-up / min-of-N / stdev; measured 1.3-2.2× intra-run variance (`Ipv4Addr.parse`: 11.87 / 25.92 / 14.05 ns/op). PerfScore **80** (Fix). Mechanically gates every `confidence::suspected` finding from promoting past Monitor.
+
 | PerfSeverity | Count |
 |-------------|-------|
-| P1 | 2 (I1 bench harness, D1 README overflow docs) |
-| P2 | 3 (D2 assert, A1 Url scans, S1 haversine) |
-| P3 | 0 |
+| P0 | 0 |
+| P1 | 2 (BENCH-01, BENCH-02) |
+| P2 | 2 (BENCH-03, A1 / URL-01) |
+| P3 | 4 (A6 / FMT-01, S1 / PRECOMP-01, IPADDR-01, S3) |
 
-**PerfScore top finding:** I1 — no `zig build bench` harness (score **80**). P1 ledger entry reopened; every P5/P7/P9 "Won't Do" rests on "trust the compiler" with nothing defending against toolchain regressions.
-
-**Ledger corrections:** P7 scan count 5 → 6; P9 trig count 6 → 7 (atan2 was omitted).
-
-**Zero-alloc contract confirmed** by grep across `src/`. Integer-overflow semantic divergence (panic in Debug/Safe vs wrap in ReleaseFast) is per-function documented but not at README/NFR level — D1 fix recommended.
+**Bench health vs prior scan baseline:** no regression — Ipv4=24.5, Ipv6=26.6, Url=95.4, cosine=1.2, haversine=1.2 ns/op (ReleaseFast). Every min ≤ baseline; jitter exceeds every finding's projected win (→ BENCH-01 is the gate).
 
 ### Security
 
+**Top finding by Risk Score:** SAST-PANIC-01 — `Vector.at(i)` at `src/types/vector.zig:76-80` calls `@panic("Vector index out of bounds")`; documented but reachable from untrusted `usize`. Risk **24** (Medium). One-line hardening: replace `@panic` with `std.debug.assert(i < N)`.
+
 | Risk Level | Count |
 |-----------|-------|
-| Critical | 1 (SAST-09) |
-| High | 2 (SAST-05, SAST-01) |
-| Medium | 4 (SAST-07, SC-01, SAST-04, NEW-02) |
-| Low | 1 (NEW-01) |
+| Critical | 0 |
+| High | 0 |
+| Medium | 4 (SAST-PANIC-01, SAST-DOS-01, CI-SUP-01, CI-SUP-02) |
+| Low | 6 |
 
-**Immediate actions before next release:** patch SAST-09, SAST-05, SAST-01. Zero secret rotations (gitleaks 0 / trufflehog 0).
+**Immediate actions:** None. 0 secret rotations, 0 active vulnerabilities. Gitleaks v8 scanned 26 commits / ~580 KB — 0 findings. Dependency graph empty — nothing for OSV/Trivy/Grype to resolve.
 
-**Top finding — SAST-09 (Risk 80, Critical, CWE-918):** `Ipv4Addr.isPrivate`/`isLoopback` + `Ipv6Addr.isLoopback` miss link-local (`169.254.169.254`), CGNAT, IPv6 `fc00::/7`, `fe80::/10`, and IPv4-mapped-v6 (`::ffff:169.254.169.254`). Consumers using these as an SSRF allow-gate are bypassable. Recommended API: add `isSafeForOutboundFetch(self)` on v4 and v6 with v4-mapped-v6 downcast.
-
-**Ledger drift corrected:** S7 flipped from "Won't Do" to "Closed" — CI implements SHA-256 verify at `.gitlab-ci.yml:39-77`.
+Previously-Critical items (SAST-01/04/05/07/09, NEW-01) all **closed on main** and verified by security-review.md against current sources.
 
 ---
 
 ## Cross-Domain Summary
 
-| Domain | Findings | Issues Created | Issues Updated | Ledger Reopened |
-|--------|----------|----------------|----------------|----------------|
-| Gap Analysis | 10 open | 6 (#23, #24, #25, #27, #30, #32) | 0 | GAP-0011, GAP-0018 |
-| Quality | 28 new | 8 (#26, #28, #31, #34, #37, #38, #40, #41) | 20 ledger-only | Q5→Q20, Q10→Q33, Q11→Q36 |
-| Performance | 5 actionable | 3 (#29, #33, #36) | 2 monitor | P1 |
-| Security | 8 new | 8 (#35*, #39*, #42*, #43, #44, #45, #46, #47) | 0 | — |
-| **Total** | **51** | **25** | — | — |
+| Domain | Findings | Issues Created | Issues Updated | Issues Closed |
+|--------|---------:|---------------:|---------------:|--------------:|
+| Gap Analysis | 6 open | 1 (#53) | 6 (label/state sync) | 5 (sync) |
+| Quality | 10 (top 10 tracked) | 8 (#48-52, #54-56) | 2 (comments) | 0 new |
+| Performance | 8 | 8 (#57-64) | 0 | 0 new |
+| Security | 9 | 9 (#65-73) | 0 | 0 new |
+| **Total** | **33** | **26** | **8** | **5** |
 
-\* Confidential issues (#35 SAST-09, #39 SAST-01, #42 SAST-05).
-
-**Cross-domain dedup:** Q26 ≡ SAST-01 (same code path, two lenses). Issues cross-linked, not duplicated — #28 is the quality/API ticket, #39 is the confidential security ticket.
-
-### Docs Updated
+## Docs Updated
 
 | File | Domain | Action |
 |------|--------|--------|
-| `README.md` | Gap | Test count 230 → 262; fuzz-broken note |
-| `docs/GAP_ANALYSIS.md` | Gap | Appended GAP-0019..0022; flipped GAP-0011/0018 to Open |
-| `docs/GAP_ANALYSIS_RESOLVED.md` | Gap | Annotated GAP-0011/0018 as "Regressed on 2026-04-18" |
-| `docs/QUALITY_GAP_ANALYSIS.md` | Quality | Rewritten 41-row ledger; PriorityScore column; Q-reopens; roadmap |
-| `docs/PERF_GAP_ANALYSIS.md` | Perf | Reopened P1; corrected P7/P9 counts; appended I1/D1/D2/A1/S1 |
-| `docs/SECURITY_GAP_ANALYSIS.md` | Security | Flipped S7 to Closed; appended SAST-01/04/05/07/09, NEW-01/02, SC-01 |
-| `docs/audit/*` (12 files) | All | Orientation, scan, review artifacts per domain |
+| `docs/audit/gap-requirements.md` | Gap | rewritten (32 reqs, up from 22) |
+| `docs/audit/gap-trace.md` | Gap | rewritten (26 / 2 / 4 / 0) |
+| `docs/audit/gap-detected.md` | Gap | rewritten (6 open) |
+| `docs/GAP_ANALYSIS.md` | Gap | updated (6 open) |
+| `docs/GAP_ANALYSIS_RESOLVED.md` | Gap | updated (+5 closed + rollup sync) |
+| `docs/audit/quality-inventory.md` | Quality | rewritten |
+| `docs/audit/quality-scan.md` | Quality | rewritten |
+| `docs/audit/quality-review.md` | Quality | rewritten |
+| `docs/QUALITY_GAP_ANALYSIS.md` | Quality | updated |
+| `docs/audit/perf-context.md` | Perf | rewritten |
+| `docs/audit/perf-scan.md` | Perf | rewritten |
+| `docs/audit/perf-review.md` | Perf | rewritten |
+| `docs/PERF_GAP_ANALYSIS.md` | Perf | updated |
+| `docs/audit/security-inventory.md` | Security | rewritten |
+| `docs/audit/security-scan.md` | Security | rewritten |
+| `docs/audit/security-review.md` | Security | rewritten |
+| `docs/SECURITY_GAP_ANALYSIS.md` | Security | updated |
 
-### Top 10 Findings (cross-domain, by severity/score)
+## Top 10 Findings (cross-domain)
 
 | # | Domain | Finding | Severity | Score | Issue |
-|---|--------|---------|----------|-------|-------|
-| 1 | Security | SAST-09 SSRF cloud-metadata bypass (isPrivate/isLoopback) | Critical | Risk 80 | #35 (confidential) |
-| 2 | Gap | GAP-0019 CI Linux/x86_64-only vs README cross-platform claim | Critical | — | #23 |
-| 3 | Gap | GAP-0020 Fuzz suite broken under Zig 0.16 (std.testing.fuzz API change) | Critical | — | #24 |
-| 4 | Quality | Q30 Fuzz suite broken (≡ GAP-0020) | Critical | 80 | #26 |
-| 5 | Perf | I1 No `zig build bench` harness (reopen P1) | P1 | 80 | #29 |
-| 6 | Security | SAST-05 Url userinfo bypass (`http://a@b/`) | High | Risk 64 | #42 (confidential) |
-| 7 | Quality | Q25 Url/Domain slice-lifetime contract undocumented | High | 64 | #31 |
-| 8 | Quality | Q36 `minimum_zig_version` 0.15.1 vs CI 0.16.0 drift | High | 64 | #34 |
-| 9 | Security | SAST-01 Subnet IPv6 OOB panic with invalid prefix_len | High | Risk 48 | #39 (confidential) |
-| 10 | Gap | GAP-0021 CI missing test-extensions/test-performance + ReleaseSmall integration | High | — | #25 |
+|--:|--------|---------|----------|:-----:|-------|
+| 1 | Perf | BENCH-01 / I2 — bench harness: no warm-up/min-of-N/stdev → 1.3-2.2× jitter | P1 | 80 | #57 |
+| 2 | Quality | Q42 — README/CHANGELOG test-count drift (262/230 vs 303); claims fuzz broken | High | 64 | #48 |
+| 3 | Quality | Q44 — `.cz.yaml` fails `pretty-format-yaml` hook every clean checkout | High | 64 | #49 |
+| 4 | Perf | BENCH-02 / I3 — no perf-regression gate; bench is `allow_failure: true` | P1 | 48 | #58 |
+| 5 | Perf | BENCH-03 / I4 — missing bench corpus (IpAddr/Ipv4Addr.format/Mac.format/Subnet.contains/haversineBroadcast) | P2 | 48 | #59 |
+| 6 | Perf | A1 / URL-01 — `Url.parse` 6-8 linear scans, fused state-machine targets 30-40 % | P2 | 48 | #60 |
+| 7 | Quality | Q45 — `network.zig` 1,166 LOC — split Ipv4/Ipv6/Subnet/Mac into `src/types/network/` | Medium | 48 | #50 |
+| 8 | Quality | Q16 — `Url.parse` 108 LOC — stage extraction (elevated Low → Medium) | Medium | 48 | #51 |
+| 9 | Security | SAST-PANIC-01 — `Vector.at` `@panic` reachable on untrusted index; replace with `std.debug.assert` | Medium | 24 | #65 |
+| 10 | Security | SAST-DOS-01 — 8 parsers lack `MAX_INPUT` cap (Ipv4/Ipv6/IpAddr/Subnet/Url/LatLon/GeoPoint/Range) | Medium | 16 | #66 |
 
-### Blockers
+## Status Migrations (since `f3adc69`)
 
-- **None.** All domains completed cleanly.
-- Cosmetic: `glab auth status` warns "Invalid token provided in configuration file," but all API calls succeeded (25 issues created, all returned 201).
+- AT-NFR-004 Partial → **Implemented** (`a5abd3e`)
+- GAP-0018 Refuted → **Implemented** (`c0e07ee`)
+- GAP-0011 Refuted → **Implemented (report-only)** (`20b233c`)
+- Q9 Won't-Do → **reopened as Q45** (network.zig grew to 1,166 LOC)
+- Q16 Low → **Medium** (Url.parse now 108 LOC)
+- Q20 Low → **Medium**
+- Q38 Low → **superseded by Q42 (High)**
 
----
+## Blockers
 
-## Immediate Action Plan (recommended order)
+- **GAP-0014 / GAP-0017** — gated on Geode consumer repo availability. External blocker.
+- **GAP-0015** — gated on upstream `datetime` package. External blocker.
+- **GAP-0019** — cross-OS runners unprovisioned (infra cost). `allow_failure: true` on MRs.
+- **BENCH-01** — gatekeeper for 5 of 8 open Perf items. Until harness lands min-of-N aggregation, `suspected → confirmed` promotions are numerically impossible.
+- **NEW-REL-01** — suspected; confirmation requires inspecting next `release-semantic` pipeline output (tag signature, SBOM-as-release-asset, SLSA provenance).
 
-1. **Patch SAST-09, SAST-05, SAST-01** before next release (security blocker).
-2. **Port `tests/fuzz.zig` to Zig 0.16 Smith API** (GAP-0020 / Q30) — restores core parser-robustness invariant.
-3. **Bump `build.zig.zon:minimum_zig_version` to 0.16.0** (Q36) — align with CI.
-4. **Expand CI to macOS/Windows/aarch64** (GAP-0019) — matches README NFR claim, or retract the claim.
-5. **Wire `test-extensions` + `test-performance` into CI** (GAP-0021) — close the CI surface gap.
-6. **Add `zig build bench` harness** (I1) — defend the zero-alloc / single-pass / auto-vectorize claims against toolchain regressions.
-7. **Document `Url`/`Domain` slice-lifetime contract** (Q25 / SAST-04) — prevents downstream UAF.
-8. **Doc drift fixes** (Q36, GAP-0022, README test count) — small, high-signal.
+## Comparison to Prior Audit (`f3adc69`, same day)
+
+| Metric | Prior | This run | Delta |
+|--------|------:|---------:|------:|
+| Requirements tracked | 22 | 32 | +10 (scope expansion) |
+| Open gaps | 10 | 6 | -4 |
+| Critical findings (any domain) | 3 (gap) + 1 (Q30) | 0 | **cleared** |
+| Tests runnable | 262 | 303 | +41 |
+| Bench regressions | 0 | 0 | — |
+| Secret findings | 0 | 0 | — |
+| Dep vulnerabilities | 0 | 0 | — |
+
+## Recommended Next Actions (one-MR bundle)
+
+1. **Q42** — edit `README.md:14`, `CHANGELOG.md:17` — remove "fuzz broken", update to 303 tests (≤ 10 LOC, 1 commit).
+2. **Q44** — run `pretty-format-yaml --autofix .cz.yaml`, commit diff (or add to `.pre-commit-config` excludes with rationale).
+3. **SAST-PANIC-01** — `src/types/vector.zig:76-80`, swap `@panic` for `std.debug.assert(i < N)` (1-line change).
+4. **CI-SUP-01/02** — add SHA-256 verify to macOS `brew` / Windows `iwr` Zig install steps in `.gitlab-ci.yml`.
+5. **BENCH-01** — add warm-up + min-of-N + stdev to `bench/main.zig`; unblocks #58, #59, #60, #61, #62, #63, #64.
+
+All five are self-contained, low-risk, and together close the top Quality and Security items while unblocking the Perf backlog.

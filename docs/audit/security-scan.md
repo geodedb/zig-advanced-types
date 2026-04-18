@@ -1,383 +1,283 @@
-# Security Scan Report — advanced-types
+# Security Scan Report -- advanced-types
 
 **Date:** 2026-04-18
-**Scope:** `/home/benji/src/devnw/zig/advanced-types` (full repo)
-**Platform:** GitLab `gitlab.com/devnw/zig/advanced-types`
-**Language:** Zig (min `0.15.1`, CI pinned `0.16.0`)
+**Scope:** `/home/benji/src/devnw/zig/advanced-types` (full repo, 26 commits)
+**Platform:** GitLab `gitlab.com/devnw/zig/advanced-types` (no `.github/workflows`)
+**Language:** Zig (min `0.16.0` per `build.zig.zon:5`; CI pins `ZIG_VERSION: "0.16.0"` per `.gitlab-ci.yml:27`)
 **Phase:** 2 of `/codepros:audit` (security-scanner)
-**Prior handoff:** `docs/audit/security-inventory.md` (Phase 1)
+**Prior handoff:** `docs/audit/security-inventory.md`
+**Consumer:** `docs/audit/security-review.md` (Phase 3)
 
 ## 1. Tool Availability
 
-| Tool | Available | Version | Used |
-|------|-----------|---------|------|
-| gitleaks | yes (local download) | 8.24.0 | yes |
-| semgrep | yes | 1.x | yes |
-| trufflehog | no | — | skipped (gitleaks covers) |
-| trivy / grype / syft / osv-scanner | no | — | skipped (no runtime deps anyway) |
-| shellcheck / hadolint | yes / no | — | no shell or Dockerfile in repo |
-| checkov | no | — | CI `trivy config` equivalent absent locally |
-| govulncheck | yes | — | N/A (no Go code) |
-| bandit / safety / cargo-audit / snyk | no | — | N/A (no Python/Rust code; Snyk not authenticated) |
-| language fuzz | built-in `zig build test --fuzz` | 60s CI budget | scheduled only |
+| Tool | Available | Version | Used | Notes |
+|------|-----------|---------|------|-------|
+| gitleaks | yes (local build) | `zricethezav/gitleaks/v8@latest` | yes | Replicates `security-gitleaks@v1.7.1` CI job |
+| semgrep | yes | 1.159.0 | yes | Scoped to `src/ build.zig build.zig.zon .gitlab-ci.yml`; `--metrics=off` |
+| govulncheck | yes | v1.2.0 | N/A | No Go code |
+| trufflehog | no | -- | skipped | gitleaks covers secrets path |
+| osv-scanner / trivy / grype / syft | no | -- | skipped | `.dependencies = .{}` -- nothing to resolve |
+| shellcheck / hadolint / checkov | no | -- | skipped | No Dockerfile, no shell scripts in repo; `.gitlab-ci.yml` inline shell audited manually |
+| bandit / safety / cargo-audit / snyk | no | -- | N/A | No Python / Rust; Snyk unauthenticated |
+| zig-native fuzzer | yes | `zig build test --fuzz` | out-of-scope for scanner phase | 60s CI budget, manual/scheduled only (`.gitlab-ci.yml:341-358`) |
 
-Telemetry: `semgrep --metrics=off` used. No external uploads.
+Telemetry disabled (`semgrep --metrics=off`). No external uploads. Gitleaks installed via `go install github.com/zricethezav/gitleaks/v8@latest` into `/home/benji/go/bin/gitleaks`.
 
-## 2. Secret Detection (gitleaks 8.24.0)
+## 2. Secret Detection (gitleaks)
 
-Command: `gitleaks detect --source . --no-banner --redact --report-format json --report-path /tmp/gitleaks.json`
+Command (replicates CI): `gitleaks detect --no-banner --redact --report-format json --report-path /tmp/gitleaks.json`
 
 | Metric | Value |
 |--------|-------|
-| Commits scanned | 8 |
-| Bytes scanned | ~252 KB |
+| Commits scanned | 26 |
+| Bytes scanned | ~579.7 KB |
 | Findings | **0** |
 | Exit code | 0 |
+| Report | `/tmp/gitleaks.json` (`[]`) |
 
-Local config at `.gitleaks.toml:1-22` extends default rules, allowlists `.zig-cache`, `zig-out`, `.git`.
+Local config: `.gitleaks.toml:1-22` extends default rules; allowlists `.zig-cache`, `zig-out`, `.git`. No custom rules, no per-finding allowlist entries -> no false-positive suppression is in play.
 
-**Confidence:** confirmed. No leaks.
+**Confidence:** `confidence::confirmed`. No leaks.
 
-## 3. SBOM / Dependency / Vulnerability
+| Tool | Findings | Types | Files Affected | Confidence |
+|------|----------|-------|----------------|------------|
+| gitleaks 8 (latest) | 0 | -- | -- | `confidence::confirmed` |
 
-### 3.1 Runtime dependencies
+## 3. Dependency / Supply-Chain Scan
 
-- `build.zig.zon:6` — `.dependencies = .{}` (empty)
-- No lockfile (none exists for Zig 0.15+ with empty deps)
-- No transitive packages; library is `std`-only
+### Package graph
 
-**CVE surface:** 0 (confidence::confirmed)
+`build.zig.zon:6` declares `.dependencies = .{}`. Full contents verified:
 
-### 3.2 Zig compiler (0.16.0 pinned via `ZIG_VERSION` at `.gitlab-ci.yml:27`)
+```zig
+.{
+    .name = .advanced_types,
+    .version = "0.1.0",
+    .fingerprint = 0x7bf641380ae7b1a5,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{},
+    .paths = .{ "build.zig", "build.zig.zon", "src", "LICENSE", "README.md" },
+}
+```
 
-As of 2026-04-18, no published CVEs against `ziglang/zig@0.16.0` were found in NVD
-(offline check — no network in this scan run; confidence::suspected).
-Caller should cross-check the Zig security advisories page before release.
+No `b.dependency(...)` / `b.lazyDependency(...)` in `build.zig`. Zero transitive library dependencies. Nothing for osv-scanner / trivy / grype to resolve.
 
-SHA-256 verification is performed in CI (`.gitlab-ci.yml:39-77`) against the
-upstream `ziglang.org/download/index.json` — note this is TOFU each run
-(the index itself is fetched and trusted over HTTPS). This matches S7 status
-in `docs/SECURITY_GAP_ANALYSIS.md:34` ("Won't Do") and is **mis-documented**:
-the ledger says "HTTPS provides baseline protection; checksum verification
-requires maintaining hash values per version" but the CI script **does**
-verify SHA-256 from the index. The ledger should be updated to reflect the
-implemented control.
+| Dependency surface | Source | Pinning | Integrity | Confidence |
+|--------------------|--------|---------|-----------|------------|
+| Runtime library deps | `build.zig.zon` | `.dependencies = .{}` | n/a (empty) | `confidence::confirmed` |
+| Zig toolchain | `ziglang.org/download/index.json` + tarball (same request chain) | `ZIG_VERSION: "0.16.0"` variable | SHA-256 via `sha256sum --check --strict` against shasum extracted from `index.json` same run (`.gitlab-ci.yml:59-77`) -- TOFU | `confidence::suspected` (TOFU; already tracked as `S7`) |
+| ci-catalog components (SAST, DS, secrets, gitleaks, SBOM gen/scan, release-semantic) | `gitlab.com/devnw/ci-catalog/*@v1.7.1` | floating minor tag (not a commit SHA) | tag re-point possible upstream; same-group trust | `confidence::suspected` (already tracked as `SC-01`; closed as won't-do via platform controls per `docs/audit/gap-close-plan.md`) |
+| zig-format component | `gitlab.com/devnw/ci-catalog/zig-format@v1.2.1` | floating minor tag | same as above | `confidence::suspected` |
 
-### 3.3 CI catalog components (supply chain)
+No transitive third-party package concerns. Supply-chain surface is entirely upstream Zig + ci-catalog.
 
-`.gitlab-ci.yml:10-24` imports:
+## 4. SAST (Pattern + Semgrep-assisted)
 
-| Component | Ref |
+No mainstream SAST tool supports Zig. Primary evidence is direct pattern audit; `semgrep` was run with `p/security-audit`, `p/secrets`, `p/ci` rule packs scoped to repo source (47 rules, 9 files) -- **0 findings**. An unscoped `--config auto` run surfaced 4 hits (`Dockerfile:57`, `Dockerfile:58`, `e2e/Dockerfile:11`, `gen/pkg/wsx/ws.go:410`) -- verified FALSE POSITIVES from semgrep's cache of other projects: none of those paths exist in this repo (`ls` confirms absence). Scoped run is authoritative.
+
+### 4.1 `@intCast` / narrowing-cast sites (range-check audit)
+
+16 `@intCast` sites -- zero `@truncate`, `@bitCast`, `@ptrCast`, `@alignCast` anywhere under `src/`. All casts are in `src/types/network.zig`:
+
+| File:Line | Cast | Target | Guard | Verdict | Confidence |
+|-----------|------|--------|-------|---------|------------|
+| `network.zig:62-65` | `@intCast((value >> k) & 0xFF)` | `u8` | `& 0xFF` masks to `[0,255]` | total | `confidence::confirmed` |
+| `network.zig:91` | `@intCast(current_value)` | `u8` | `current_value > 255` check on line 90 | safe | `confidence::confirmed` |
+| `network.zig:108` | `@intCast(current_value)` | `u8` | `current_value > 255` check on line 107 | safe | `confidence::confirmed` |
+| `network.zig:198-199` | `@intCast((seg >> 8) & 0xFF)` / `& 0xFF` | `u8` | mask | total | `confidence::confirmed` |
+| `network.zig:280-281, 298-299` | `@intCast((current_value >> 8) & 0xFF)` / `& 0xFF` | `u8` | `current_value > 0xFFFF` check on preceding lines | safe | `confidence::confirmed` |
+| `network.zig:533` | `@intCast(prefix_len)` | `u8` | `prefix_len > max_prefix` (max=128) on line 529 | safe | `confidence::confirmed` |
+| `network.zig:564` | `@intCast(@as(u8, 32) - prefix_len)` | `u5` | branches handle `prefix_len==0` and `prefix_len==32` before the cast (lines 555-557) plus `std.debug.assert(prefix_len > 0 and prefix_len < 32)` on line 563 | safe; assert elided in `ReleaseFast` but branches remain | `confidence::confirmed` |
+| `network.zig:574` | `@intCast(prefix_len % 8)` | `u3` | `prefix_len % 8` is in `[0,7]`, total for `u3` | total | `confidence::confirmed` |
+| `network.zig:581` | `@intCast(@as(u4, 8) - @as(u4, remaining_bits))` | `u3` | gated by `remaining_bits > 0` on line 580 -> `(8 - remaining_bits)` in `[1,7]` fits `u3` | safe | `confidence::confirmed` |
+
+No narrowing cast is reachable without a preceding range check (or mask, or `comptime`-sized value). No `@setRuntimeSafety(false)` anywhere.
+
+### 4.2 `unreachable` / `@panic` sites (caller-reachability audit)
+
+| File:Line | Kind | Reachable from untrusted caller? | Confidence |
+|-----------|------|----------------------------------|------------|
+| `src/types/vector.zig:78` | `@panic("Vector index out of bounds")` inside `Vector(T,N).at(index)` | **Yes** -- `at(i)` is public and panics when `index >= N`. Documented (`src/types/vector.zig:75`). `get(i)` is the safe alternative. Any caller passing an attacker-controlled `usize` to `at()` aborts the process. Mark **SAST-PANIC-01**. | `confidence::confirmed` |
+| `src/types/network.zig:563` | `std.debug.assert(prefix_len > 0 and prefix_len < 32)` in `containsV4` | `Subnet.init` / `.parse` reject out-of-range `prefix_len`. Struct-literal construction with a bad prefix is defensively caught on lines 555-557 (returns `false` or equality check) before the assert. Assert is belt-and-suspenders; elided in `ReleaseFast`. | `confidence::confirmed` not-reachable-from-caller |
+| `std.fmt.bufPrint(...) catch unreachable` x22 sites (geographic.zig:386, 393, 466, 553, 560; network.zig:712, 891, 895, 901, 962, 966, 1079, 1083, 1135; range.zig:452, 459, 466, 513; vector.zig:504, 511, 532, 542) | `catch unreachable` | Every site is inside a `test ".."` block with a compile-time-sized stack buffer sized for the fixed-format output. Not reachable from library callers -- tests only. | `confidence::confirmed` not-reachable |
+
+**Finding SAST-PANIC-01 (confirmed):** `Vector.at(index)` panics on OOB. This is documented API, but a consumer forwarding untrusted indices directly to `at()` yields a DoS primitive. Matches inventory rank-1. Mitigations: `get(i)` exists and returns `?T`. Review-phase will decide whether to downgrade `at`'s panic, add explicit caller-facing guidance, or leave as-is.
+
+### 4.3 Parser DoS -- loops keyed on input length without cap
+
+`grep input\.len\s*>\s*\d+` yields exactly **one** explicit length cap in `src/`:
+
+| File:Line | Cap |
 |-----------|-----|
-| `security-sast` | `@v1.7.1` |
-| `security-dependency-scanning` | `@v1.7.1` |
-| `security-secrets` | `@v1.7.1` |
-| `security-gitleaks` | `@v1.7.1` |
-| `zig-format` | `@v1.2.1` |
-| `sbom-generate` | `@v1.7.1` |
-| `sbom-scan` | `@v1.7.1` |
-| `release-semantic` | `@v1.7.1` |
+| `src/types/url.zig:54` | `if (input.len > 253) return ParseError.InvalidDomain;` |
 
-All floating minor version refs (e.g., `@v1.7.1` can be re-tagged). Same GitLab group
-(`devnw/ci-catalog`) — supply-chain risk = group-admin-compromise risk.
-**Confidence:** suspected. No concrete CVE; documented as accepted risk.
+That is the only hard length cap outside `Mac.parse` (exact `==17`). The following parsers walk the full input with no upper bound:
 
-### 3.4 Pre-commit hooks
+| Parser | File:Line | Per-iteration work | DoS posture | Confidence |
+|--------|-----------|--------------------|-------------|------------|
+| `Ipv4Addr.parse` | `network.zig:86-108` | O(1) per byte; digit cap 3, early overflow exit | O(n) with tiny constant; unbounded input accepted | `confidence::confirmed` -- tracked rank 5 |
+| `Ipv6Addr.parseGroups` + `Ipv6Addr.parse` | `network.zig:260-303, 214-258` | `findDoubleColon` walks to end (O(n)); `parseGroups` O(1) per byte | two passes, both O(n); unbounded input accepted | `confidence::confirmed` |
+| `IpAddr.parse` | `network.zig:438-451` | extra O(n) scan for `':'` before delegating | three-pass worst case for v6 input | `confidence::suspected` (minor, predictable-linear) |
+| `Subnet.parse` | `network.zig:503-535` | O(n) scan for `'/'`, then O(n) per-family parse, then O(len(prefix_part)) prefix digit loop | unbounded; prefix loop bails at `> 128` | `confidence::confirmed` |
+| `Url.parse` | `url.zig:190-297` | multiple `indexOf*` scans (O(n)), `validateHostChars` O(n) | unbounded; all passes linear -- no quadratic blow-up, but no cap | `confidence::confirmed` |
+| `Mac.parse` | `network.zig:617-641` | `input.len != 17` early exit | safe -- single-value length gate | `confidence::confirmed` not-a-DoS |
+| `LatLon.parse` / `LatLonAlt.parse` | `geographic.zig:158, 211`, via `parseTupleInParens` (`geographic.zig:45-...`) | O(n) split on `,` then `parseFloat` per field | unbounded; field count bound by commas | `confidence::confirmed` |
+| `GeoPoint.parse` | `geographic.zig:296-313` | `std.mem.count(inner, ",")` then delegation | two passes, both O(n) | `confidence::confirmed` |
+| `Range(T).parse` | `range.zig:107-125` | O(n) `indexOf` for `,` then two `parseInt` | unbounded | `confidence::confirmed` |
+| `Vector(T,N).parse` | `vector.zig:211-236` | `splitScalar(',')`; bails early when `count >= N` via `InvalidDimension` | bounded by `N`: attacker cannot drive more than `N+1` iterations before error -- **actually capped** | `confidence::confirmed` bounded |
+| `Domain.parse` | `url.zig:52-73` | 253-byte hard cap | safe | `confidence::confirmed` |
 
-`.pre-commit-config.yaml:9-80` pins hook versions at `rev: vX.Y.Z` (gitleaks hook
-is **not** present locally — CI has it, dev box does not). Not a CVE, but
-widens the detection window for leaked secrets introduced in a local commit.
-**Severity:** Low. **CWE-noinfo / supply-chain convenience.** (confidence::confirmed)
+**Finding SAST-DOS-01 (confirmed):** Every parse path except `Domain.parse`, `Mac.parse`, and `Vector.parse` accepts arbitrarily long input. Each is linear-time, so this is not algorithmic-complexity DoS; the concern is memory/CPU amplification from a caller that trusts the library to bound `input.len`. Matches inventory rank 5. Suggested mitigation: per-type `MAX_INPUT` cap (e.g., `Ipv4Addr <= 15`, `Ipv6Addr <= 45`, `Subnet <= 49`, `Url <= 8192`).
 
-## 4. SAST — Semgrep
+### 4.4 Off-by-one / boundary bugs in parsers
 
-Command: `semgrep scan --config p/security-audit --config p/secrets --config p/owasp-top-ten --config p/r2c-security-audit --metrics=off --json -o /tmp/semgrep-scoped.json .`
+| Site | File:Line | Analysis | Verdict | Confidence |
+|------|-----------|----------|---------|------------|
+| IPv4 octet cap | `network.zig:88-90, 95-98, 105-107` | `current_value: u16` accumulates; `> 255` check before `@intCast(u8)`; `digit_count > 3` check prevents `u16` overflow (max 3 digits = `999 < 65535`) | correct | `confidence::confirmed` |
+| IPv4 dot placement | `network.zig:88, 89, 106` | empty-octet `digit_count == 0`, max-octets `octet_index >= 3`, final `octet_index != 3` -- all guarded | correct | `confidence::confirmed` |
+| IPv6 `::` position | `network.zig:221-258` | `findDoubleColon` walks `0..input.len-1`; `right_start = dc_pos + 2` with `right = if (right_start <= input.len) input[right_start..] else ""` -- handles trailing `::` | correct | `confidence::confirmed` |
+| IPv6 group copy-to-right | `network.zig:244-247` | `right_offset = (8 - right_count) * 2`; writes `right_count * 2` bytes from `right_octets[0..]` into `octets[right_offset..]` -- terminates inside `octets[16]` | correct | `confidence::confirmed` |
+| Subnet prefix digit accumulation | `network.zig:517-521` | `u16` accumulator capped at 128 before `@intCast(u8)`; `> 128` check triggers `error.Overflow` | correct | `confidence::confirmed` |
+| Port parsing strict | `url.zig:362-374` | leading-zero rejected when `len > 1`; single `"0"` allowed (port 0 is valid); delegates to `std.fmt.parseInt(u16, ...)` for range | correct; matches `NEW-01` | `confidence::confirmed` |
+| IPv6 literal in URL | `url.zig:253-262` | `host_part[0] == '['` -> `indexOfScalar(']')` or `InvalidFormat`; port after `']'` requires explicit `':'` | correct | `confidence::confirmed` |
+| Multi-`@` authority (userinfo) | `url.zig:242-245` | `lastIndexOfScalar(authority, '@')` -- WHATWG "last `@` wins"; `evil.com@trusted.com` parses `host=trusted.com`, `userinfo=evil.com` | correct | `confidence::confirmed` |
+| `host_part[0]` read | `url.zig:253` | preceded by `if (host_part.len == 0) return MissingHost;` on line 246 -- no underflow | correct | `confidence::confirmed` |
+| URL path empty-slice construction | `url.zig:231` | `input[scheme_end + 3 + rest.len .. scheme_end + 3 + rest.len]` creates a zero-length slice at the authority end -- valid Zig slice | correct | `confidence::confirmed` |
+| Domain trailing-dot | `url.zig:58-70` | `input[label_start..]` for last label; `label.len == 0` triggers `InvalidDomain`, so trailing `.` is rejected | correct | `confidence::confirmed` |
+| Vector dimension | `vector.zig:219-234` | `count >= N -> InvalidDimension`; final `count != N -> InvalidDimension` | correct | `confidence::confirmed` |
+| Range span overflow | `range.zig:85-87` | Deliberately unchecked; documented rank 3 | known-risk | `confidence::confirmed` |
+
+No new off-by-one or boundary-bug finding. `confidence::confirmed` across the table.
+
+### 4.5 Allocator usage (should be absent)
+
+| Hit | File:Line | Verdict |
+|-----|-----------|---------|
+| `std.mem.Allocator` (text match) | `url.zig:47, 170` | **doc comment only** -- points callers at `Allocator.dupe` to transfer ownership |
+| `.alloc(` / `.free(` / `.dupe(` / `.create(` / `.destroy(` | none under `src/` | **none** |
+
+`confidence::confirmed`. Library is allocator-free. Matches inventory line 42.
+
+### 4.6 Semgrep (scoped)
+
+Command: `semgrep scan --config p/security-audit --config p/secrets --config p/ci --metrics=off --json -o /tmp/semgrep-scoped.json src build.zig build.zig.zon .gitlab-ci.yml`
 
 | Metric | Value |
 |--------|-------|
-| Rules run | 64 |
-| Targets scanned | 40 |
-| Parsed | ~100% |
-| Findings | **0 (0 blocking)** |
+| Rules | 47 |
+| Files scanned | 9 |
+| Results | 0 |
+| Errors | 0 |
 
-Zig is not in Semgrep's supported language set for registry rules, so the 40
-targets are limited to YAML/TOML/Markdown/config. The Zig code (`src/**/*.zig`,
-`tests/**/*.zig`, `build.zig`) was **not statically analyzed by Semgrep**.
-**Confidence:** confirmed for the files Semgrep parsed; **gap** for Zig code.
+Auto-config unscoped run (`/tmp/semgrep.json`) produced 4 results, all on paths not in this repo (`Dockerfile:57`, `Dockerfile:58`, `e2e/Dockerfile:11`, `gen/pkg/wsx/ws.go:410`) -- cache contamination from prior scans; `ls` confirms absence. **Marked false positive.**
 
-## 5. Manual SAST — Zig-Specific (high-recall grep + reasoning)
+## 5. Infra / Ops Scan (`.gitlab-ci.yml`)
 
-Zig has no mainstream external SAST. The following is a manual pass that covers
-the patterns flagged in `docs/audit/security-inventory.md:139-143`.
+| Control | Observation | File:Line | Severity | Confidence |
+|---------|-------------|-----------|----------|------------|
+| Component pinning | All security & SBOM components `@v1.7.1` (floating tag, not commit SHA) | `.gitlab-ci.yml:11-14, 20-21, 24` | Medium | `confidence::confirmed` -- matches `SC-01` (closed won't-do, platform controls) |
+| `zig-format` pin | `@v1.2.1` (floating) | `.gitlab-ci.yml:17` | Medium | `confidence::confirmed` |
+| Runner tagging | `default.tags: [company]` -- trusted runner pool | `.gitlab-ci.yml:5-7` | Informational | `confidence::confirmed` |
+| Stored secrets in YAML | None: no `$VAR` reference to user secrets; no explicit `variables` block holding tokens | `.gitlab-ci.yml:26-27` (only `ZIG_VERSION`) | N/A | `confidence::confirmed` |
+| Zig toolchain integrity | SHA-256 compared against shasum from `index.json` fetched same job -> TOFU | `.gitlab-ci.yml:59-72` | Medium | `confidence::confirmed` -- tracked `S7` |
+| Python inline | Inline `python3 -c` block reads `index.json` to extract shasum; pins no Python packages | `.gitlab-ci.yml:61-69` | Low (no pip install) | `confidence::confirmed` |
+| Fuzz coverage on MR | Fuzz job rules: `$CI_PIPELINE_SOURCE == "schedule"` auto, `"web"` manual, default MR push skips | `.gitlab-ci.yml:341-358` | Medium | `confidence::confirmed` -- tracked rank 10 |
+| Fuzz timeout | `timeout 60 zig build test --fuzz; rc=$?; ...` -- 60s budget, `rc=124` treated as pass | `.gitlab-ci.yml:347` | Informational | `confidence::confirmed` |
+| Coverage gate | `coverage: job.allow_failure: true`; report-only | `.gitlab-ci.yml:307-332` | Informational | `confidence::confirmed` (per `Q31` / `GAP-0011`) |
+| Cross-arch jobs | macOS/Windows/aarch64 all `allow_failure: true` + manual; any dispatch failure doesn't block pipeline | `.gitlab-ci.yml:238-297` | Low (quality, not security) | `confidence::confirmed` |
+| macOS `brew install zig` (unpinned, with error-swallow) | Uses unpinned Homebrew formula; no SHA check on the brew path | `.gitlab-ci.yml:243` | Medium (supply chain) | `confidence::suspected` -- divergence from Linux TOFU+SHA path |
+| Windows install | `iwr` then `Expand-Archive` -- no hash check of the downloaded `zig.zip` | `.gitlab-ci.yml:264` | Medium (supply chain) | `confidence::suspected` -- only Linux path SHA-verifies the tarball |
+| CODEOWNERS | Single owner `@benjiv` | `CODEOWNERS:3` | Medium | `confidence::confirmed` (documented repeatedly) |
+| Pre-commit local hook | `detect-private-key`, `zig fmt`, `zig build check/test` -- no gitleaks hook in pre-commit | `.pre-commit-config.yaml:28` (only `detect-private-key`) | Low -- CI catches secrets | `confidence::confirmed` |
 
-### 5.1 `@intCast` sites (CWE-190, CWE-681)
+**Findings from infra scan:**
 
-Total: **12 `@intCast` sites** across `src/types/network.zig`. All audited by hand.
+- **CI-SUP-01 (suspected):** `test-macos` uses `brew install zig || true` (`.gitlab-ci.yml:243`). No SHA verification, no version pinning. Diverges from the Linux path's verified `ziglang.org/index.json` -> `sha256sum --check` pipeline.
+- **CI-SUP-02 (suspected):** `test-windows` `iwr` + `Expand-Archive` of `zig.zip` (`.gitlab-ci.yml:264`) -- no SHA verification.
+- **CI-CAT-01 (confirmed, previously accepted):** ci-catalog components pinned to floating `@v1.7.1` / `@v1.2.1`. Remediation already closed as won't-do (`SC-01`) with platform-control rationale.
+- **CI-FUZZ-01 (confirmed, previously tracked):** Fuzz skipped on MR pipelines. Rank 10 in inventory. Not a new finding.
+- **CI-SECRETS-01 (informational):** `gitleaks` runs in CI (component `security-gitleaks@v1.7.1`) but not in `.pre-commit-config.yaml` -- the pre-commit only has `detect-private-key`. Defense-in-depth gap, not a live issue.
 
-| # | File:Line | Expression | Pre-guard | Verdict |
-|---|-----------|------------|-----------|---------|
-| A1 | `src/types/network.zig:61-64` | `fromU32` right-shifts masked with `0xFF` -> `u8` | `& 0xFF` caps to u8 | safe (confirmed) |
-| A2 | `src/types/network.zig:90` | `octets[i] = @intCast(current_value)` in `Ipv4Addr.parse` | `current_value > 255` checked at line 89 | safe (confirmed) |
-| A3 | `src/types/network.zig:107` | same, last octet | checked at line 106 | safe (confirmed) |
-| A4 | `src/types/network.zig:174-175` | `Ipv6Addr.init` segment split | input is `[8]u16`, mask with `0xFF` | safe (confirmed) |
-| A5 | `src/types/network.zig:256-257` | `parseGroups` per-colon write | `current_value > 0xFFFF` checked line 255 | safe (confirmed) |
-| A6 | `src/types/network.zig:274-275` | `parseGroups` final write | checked line 273 | safe (confirmed) |
-| A7 | `src/types/network.zig:456` | `Subnet.parse` prefix_len widen `u16` -> `u8` | `prefix_len > 128` capped line 444 | safe (confirmed) |
-| A8 | `src/types/network.zig:469` | `shift: u5 = @intCast(32 - self.prefix_len)` in `Subnet.contains` | **guarded only if parsed via `Subnet.parse`**; a consumer using struct literal `{ .network=..., .prefix_len=200 }` would panic here. CWE-1284 (indirect). | **suspected** (confidence::suspected) |
-| A9 | `src/types/network.zig:483` | `remaining_bits: u3 = @intCast(self.prefix_len % 8)` | `% 8` always fits `u3` | safe (confirmed) |
-| A10 | `src/types/network.zig:494` | `shift: u3 = @intCast(@as(u4, 8) - @as(u4, remaining_bits))` | reached only when `remaining_bits > 0`, so `8-[1..7]` in `[1..7]` | safe (confirmed) |
+## 6. Findings Summary
 
-**Finding SAST-01 (low, `confidence::suspected`, CWE-1284 / CWE-190):** `Subnet`
-struct has public fields `network: IpAddr, prefix_len: u8` (`src/types/network.zig:419-422`)
-and a public constructor-free value type. A caller that bypasses `Subnet.parse`
-and sets `prefix_len` to an invalid value (e.g., `200`) will hit the `@intCast`
-at `src/types/network.zig:469` and panic in `ReleaseSafe`, or compute an
-undefined mask in `ReleaseFast`. Mitigation: make the struct pack-constructed via
-`init()` with range check, or defensively clamp in `contains`.
+### Secret Detection
 
-### 5.2 `@panic` and `unreachable` on untrusted paths (CWE-248)
+| Tool | Findings | Types | Files Affected | Confidence |
+|------|----------|-------|----------------|------------|
+| gitleaks v8 (26 commits, 579.7 KB) | 0 | -- | -- | `confidence::confirmed` |
 
-- `src/types/vector.zig:78` — `Vector.at()` panics on OOB. **Documented** in docstring
-  (`src/types/vector.zig:75`) and alternative `get()` returning `?T` is provided
-  (`src/types/vector.zig:84`). Matches S3 "Closed" in `docs/SECURITY_GAP_ANALYSIS.md:30`.
-  (confidence::confirmed, **informational**)
-- All other `catch unreachable` occurrences are in test code (`std.fmt.bufPrint` with
-  statically sized buffers) — no production path. (confidence::confirmed)
+### Dependency Vulnerabilities
 
-### 5.3 `undefined` memory (CWE-457, CWE-908)
+| CVE/ID | Severity | Package | Version | Fixed In | File | Confidence |
+|--------|----------|---------|---------|----------|------|------------|
+| *none* | -- | -- | -- | -- | `build.zig.zon:6` (empty deps) | `confidence::confirmed` |
 
-All `undefined` uses in production code (not tests) are **write-before-read**:
+### SAST Findings
 
-| File:Line | Variable | Initialized at |
-|-----------|----------|----------------|
-| `src/types/network.zig:80` | `octets: [4]u8 = undefined` | written in the `parse` loop; invariant protected by `octet_index != 3` guard (line 105) before read |
-| `src/types/network.zig:172` | `octets: [16]u8 = undefined` | all 16 bytes written before return |
-| `src/types/network.zig:182` | `segs: [8]u16 = undefined` | loop `for (0..8)` writes all |
-| `src/types/network.zig:542` | `octets: [6]u8 = undefined` | loop `for (0..6)` writes all |
-| `src/types/url.zig:195-196, 209` | `authority/path/host: []const u8 = undefined` | all paths assign before read; verified |
-| `src/types/vector.zig:107, 116, 125, 218` | `result: [N]T = undefined` | `for` loops iterate all N |
+| ID | Rule | Severity | File:Line | Description | Confidence |
+|----|------|----------|-----------|-------------|------------|
+| SAST-PANIC-01 | documented-panic-on-untrusted-index | Medium | `src/types/vector.zig:76-80` | `Vector.at()` `@panic` on caller-controlled index; `get()` is the safe alternative | `confidence::confirmed` |
+| SAST-DOS-01 | unbounded-parser-input | Low-Medium | `network.zig:78, 214, 438, 503`, `url.zig:190`, `geographic.zig:158, 211, 296`, `range.zig:107` | parse paths accept arbitrarily long input (linear-time but no cap); only `Domain.parse` (253), `Mac.parse` (==17), and `Vector.parse` (N-bounded) are bounded | `confidence::confirmed` |
+| SAST-OVERFLOW-01 | documented-integer-overflow | Medium | `src/types/range.zig:85-87`, `src/types/vector.zig:106-144` | `Range.span`, `Vector.add/sub/scale/dot` wrap silently in `ReleaseFast`/`ReleaseSmall`; documented | `confidence::confirmed` (known, documented) |
+| SAST-NARROW-01 | narrowing-cast-all-guarded | Informational | `src/types/network.zig:62-65, 91, 108, 198-199, 280-281, 298-299, 533, 564, 574, 581` | all `@intCast` sites preceded by range check or mask | `confidence::confirmed` (negative finding) |
 
-**Verdict:** no UB (confidence::confirmed). However, `src/types/vector.zig:218`
-in `Vector(T,N).parse` has a weaker guarantee: if `count != N` the function
-returns `InvalidDimension` **before** using `result` (line 234 check, line 235
-return). Safe today. (confidence::confirmed)
+### IaC / Config Issues
 
-### 5.4 Integer overflow in arithmetic (CWE-190)
+| ID | Tool | Severity | File:Line | Check | Description | Confidence |
+|----|------|----------|-----------|-------|-------------|------------|
+| CI-SUP-01 | manual | Medium | `.gitlab-ci.yml:242-243` | unpinned brew zig | macOS `brew install zig` with no hash check; diverges from Linux SHA verify path | `confidence::suspected` |
+| CI-SUP-02 | manual | Medium | `.gitlab-ci.yml:264` | unverified Windows zip | `iwr ... zig.zip; Expand-Archive` with no hash verification | `confidence::suspected` |
+| CI-CAT-01 | manual | Medium | `.gitlab-ci.yml:11-24` | floating-tag components | ci-catalog `@v1.7.1` / `@v1.2.1` (not SHA-pinned); previously closed won't-do (`SC-01`) | `confidence::confirmed` accepted-risk |
+| CI-FUZZ-01 | manual | Medium | `.gitlab-ci.yml:341-358` | fuzz-not-on-MR | Fuzz job only on schedule/web (manual); MR pushes skip fuzz | `confidence::confirmed` already-tracked |
+| CI-SECRETS-01 | manual | Informational | `.pre-commit-config.yaml:28` | no pre-commit gitleaks | Only `detect-private-key` present; CI catches | `confidence::confirmed` |
 
-- `src/types/range.zig:85-87` `Range(T).span = upper - lower` — documented S6
-  in `docs/SECURITY_GAP_ANALYSIS.md:33`. `ReleaseSafe` panic, `ReleaseFast` wrap.
-  No guard today. **Finding SAST-02** (low, `confidence::confirmed`, CWE-190).
-- `src/types/vector.zig:106-139` `add/sub/scale/dot` on integer element types —
-  documented S4 in `docs/SECURITY_GAP_ANALYSIS.md:31`. **Finding SAST-03** (low,
-  `confidence::confirmed`, CWE-190).
-- `src/types/network.zig:82,97` `current_value: u16 = 0 ... current_value * 10 + (ch - '0')` —
-  bounded by `digit_count > 3` cap (line 96) so max <= 9999, fits u16. safe.
+### Shell / Dockerfile Issues
 
-### 5.5 Slice-lifetime UAF risk (CWE-416)
+| Tool | Severity | File:Line | Code | Description | Confidence |
+|------|----------|-----------|------|-------------|------------|
+| shellcheck / hadolint | N/A | -- | -- | No shell scripts or Dockerfile in repo | `confidence::confirmed` |
 
-`Url.raw`, `Url.scheme/host/path/query/fragment`, `Domain.raw` all store slices
-into the caller-owned `input` buffer.
+### Language Audit Results
 
-**Finding SAST-04** (medium, `confidence::confirmed`, CWE-416): `src/types/url.zig:37-38, 151-158`
-and `src/types/url.zig:161`, `src/types/url.zig:41`. If a consumer frees or mutates
-the input buffer while a `Url`/`Domain` value is still live, reads through the
-stored slices are use-after-free or inconsistent-read. The library contract is
-**not documented** in the public docstrings as a requirement ("Caller must keep
-input alive for as long as any returned slice is in use"). The `Url` doc at
-`src/types/url.zig:147-149` mentions "stored as slices into the original input
-string" but does not explicitly state the lifetime obligation. **Action:**
-docstring warning + an adversarial test that deliberately reuses the input
-buffer post-parse.
+| Tool | Findings | Critical | High | Medium | Low |
+|------|----------|----------|------|--------|-----|
+| govulncheck (Go) | N/A | -- | -- | -- | -- |
+| bandit (Python) | N/A | -- | -- | -- | -- |
+| cargo audit (Rust) | N/A | -- | -- | -- | -- |
+| npm audit / snyk | N/A | -- | -- | -- | -- |
 
-Mentioned as rank 6 in the threat model (`docs/audit/security-inventory.md:124`).
+## 7. Tools Not Available (gaps)
 
-### 5.6 Url userinfo / host parsing (CWE-601, CWE-918)
-
-`src/types/url.zig:161-246`:
-
-- **No `@` (userinfo) stripping.** Passing `http://evil.com@trusted.com/` sets
-  `u.host = "evil.com@trusted.com"` because `lastIndexOfScalar(u8, authority, ':')`
-  doesn't see the `@`, and nothing else splits on `@` (lines 222-229). A downstream
-  HTTP client using `u.host` for TLS SNI/host header vs. a caller-readable "display"
-  would see different hosts — classic **open-redirect / SSRF pivot**.
-  **Finding SAST-05** (medium, `confidence::confirmed`, CWE-601/CWE-918).
-  Mentioned in the threat model rank 3 (`docs/audit/security-inventory.md:121`) and
-  in "Unknowns & Assumptions" (`docs/audit/security-inventory.md:134`).
-
-- **No percent-decode / no normalization.** `%2e%2e/` in path passes through
-  verbatim. Not a library bug by itself (library is decode-free by design), but
-  worth a doctring note so callers know not to trust `url.path` for
-  path-traversal checks without normalization.
-  **Finding SAST-06** (low, `confidence::confirmed`, CWE-22 adjacent).
-
-- **IPv6 without brackets.** `src/types/url.zig:224-226` uses
-  `lastIndexOfScalar(u8, authority, ':')` so a bare `http://2001:db8::1/`
-  is mis-parsed into `host="2001:db8:"` + `port=":1"` -> `InvalidPort`. Matches
-  RFC 3986. Already documented in inventory (line 42). (confidence::confirmed,
-  **informational**)
-
-- **Control chars / whitespace in host.** No explicit reject of bytes like `\t`,
-  `\n`, space. Scheme chars are validated (line 169-173) but the authority loop
-  only enforces structure, not byte whitelist. A crafted host `evil.com\rGET /`
-  would pass if a caller didn't also validate. **Finding SAST-07** (medium,
-  `confidence::suspected`, CWE-93 / HTTP-request-smuggling precursor).
-  Needs a fuzz input to confirm (the existing fuzz harness targets parser
-  correctness; response-splitting is a consumer concern).
-
-### 5.7 Domain — IDN / Punycode / homograph (CWE-1007)
-
-`src/types/url.zig:112-114` — `isValidDomainChar` accepts ASCII alphanumeric + `-`.
-Non-ASCII bytes are rejected. A caller that receives a Unicode domain name
-must Punycode-encode it themselves (`xn--...`) before calling `Domain.parse`.
-If a caller encodes and another caller does not, two logically identical
-domains appear different. **Finding SAST-08** (low, `confidence::confirmed`, CWE-1007).
-Mentioned in inventory rank 4 (`docs/audit/security-inventory.md:122`) and
-assumption line 133. **Action:** docstring explicitly stating "ASCII-only;
-callers are responsible for Punycode conversion of IDNs".
-
-### 5.8 `Ipv4Addr.isPrivate` / `isLoopback` — SSRF semantics (CWE-918)
-
-`src/types/network.zig:128-147`:
-
-- `isLoopback` only checks `octets[0] == 127` — correct for `127.0.0.0/8`.
-- `isPrivate` covers `10/8`, `172.16/12`, `192.168/16` — RFC 1918 correct.
-- **Missing classes that a naive SSRF guard would also want:**
-  - `169.254.0.0/16` — link-local (includes AWS/GCP metadata `169.254.169.254`). **CWE-918 CRITICAL for cloud deployments.**
-  - `100.64.0.0/10` — carrier-grade NAT (RFC 6598)
-  - `0.0.0.0/8` — "this host" (Linux accepts `0.0.0.0` -> localhost on some stacks)
-  - `192.0.0.0/24`, `192.0.2.0/24`, `198.18.0.0/15`, `198.51.100.0/24`, `203.0.113.0/24`, `224.0.0.0/4`, `240.0.0.0/4`, `255.255.255.255/32` — reserved / benchmark / multicast / broadcast
-- `Ipv6Addr` has only `isLoopback`; no `isPrivate`, no `isUniqueLocal` (fc00::/7),
-  no `isLinkLocal` (fe80::/10). `toIpv4` returns mapped `::ffff:x.x.x.x` but
-  does **not** flag `::ffff:127.0.0.1` or `::ffff:169.254.169.254` as loopback/link-local.
-  A consumer using `IpAddr` as an SSRF gate can be pivoted by supplying
-  `::ffff:169.254.169.254`.
-
-**Finding SAST-09** (**high for consumers using this as an SSRF gate**,
-`confidence::confirmed`, CWE-918). Consumers like a spatial DB or URL normalizer
-that accept a domain-name input and resolve it, then check `.isPrivate()` /
-`.isLoopback()`, are missing the metadata-service class, the IPv4-mapped IPv6
-bypass, and the IPv6 private/link-local classes.
-
-**Action:** add `isLinkLocal`, `isReserved`, `isUnspecified`, `isDocumentation`,
-`isCgnat` (Ipv4Addr); add `isUniqueLocal`, `isLinkLocal`, `isMulticast`,
-`isUnspecified`, and a unified `IpAddr.isPrivate` (including mapped v4);
-and document that this set is **not** a drop-in SSRF allowlist — callers
-must opt into the classes they care about. Alternatively, provide a
-`isGloballyRoutable()` convenience that negates the union of dangerous classes.
-
-### 5.9 Parser DoS / performance (CWE-400)
-
-Every `parse()` is O(n) in input length but has **no input-length cap** (except
-`Domain.parse` at `src/types/url.zig:43` which caps 253, and `Mac.parse` at
-`src/types/network.zig:536` which requires exact 17). `Ipv4Addr.parse`,
-`Ipv6Addr.parse`, `IpAddr.parse`, `Url.parse`, `Range.parse`, `Vector.parse`,
-`LatLon.parse`, `LatLonAlt.parse`, `GeoPoint.parse`, `Subnet.parse` all walk
-the full input. A 100 MB input to `Ipv4Addr.parse` walks 100 MB.
-
-**Finding SAST-10** (low, `confidence::confirmed`, CWE-400): no library-side
-length cap. Matches inventory rank 10 (line 128). The library's position
-(caller enforces a cap) is reasonable; **action:** document in the top-level
-docstring of each module: "callers should enforce a maximum input length
-appropriate for their use case."
-
-### 5.10 Wildcard / root namespace exposure
-
-`src/root.zig:32-78` re-exports every public symbol by name (no
-`pub usingnamespace`, no `@refAllDecls` leaking privates). Well-scoped.
-(confidence::confirmed, **informational**)
-
-### 5.11 Exported-but-undocumented invariants
-
-| Symbol | File:Line | Missing invariant doc |
-|--------|-----------|------------------------|
-| `Url` fields | `src/types/url.zig:152-158` | Lifetime = caller's input buffer. See SAST-04. |
-| `Domain.raw` | `src/types/url.zig:38` | Same as above. |
-| `Subnet` fields | `src/types/network.zig:420-421` | `prefix_len` must be <= 32 (v4) / <= 128 (v6) — enforced only in `parse`, not when struct is built directly. See SAST-01. |
-| `Range.initUnchecked` | `src/types/range.zig:40` | Doc says "without validating bounds ordering"; says nothing about NaN/Inf for floats. `contains`/`span`/`overlaps` behavior on NaN is unspecified (comparisons return false). Worth explicit doc. |
-| `LatLon.initUnchecked` | `src/types/geographic.zig:58` | Same — accepts NaN/Inf; `haversineDistance` on NaN returns NaN. |
-| `Vector.at` | `src/types/vector.zig:76` | Panic behavior documented. good. |
-
-**Finding SAST-11** (low, `confidence::confirmed`, CWE-1053).
-
-## 6. Language Audit — Zig-Specific
-
-| Pattern | Instances | Verdict |
-|---------|-----------|---------|
-| Improper `undefined` on read paths | 0 in production code | safe (confidence::confirmed) |
-| `unreachable` on untrusted input | 0 in production code | safe (confidence::confirmed) |
-| `catch unreachable` in production | 0 (only in tests where buffer size is statically sufficient) | safe (confidence::confirmed) |
-| `@panic` on untrusted input | 1 (`Vector.at`) — opt-in via documented OOB contract; safe alternative (`get`) provided | documented (confidence::confirmed) |
-| Unchecked arithmetic on untrusted input | 2 (`Range.span`, `Vector.add/sub/scale/dot`) — both documented | tracked (confidence::confirmed) |
-| `unsafe`/inline-asm blocks | 0 | safe (confidence::confirmed) |
-| Wildcard imports in `root.zig` | 0 (explicit re-exports only) | safe (confidence::confirmed) |
-| Allocator footprint in parsers | 0 (all parsers zero-alloc) | safe (confidence::confirmed) |
-| FFI / `extern` boundaries | 0 | safe (confidence::confirmed) |
-
-## 7. Shell / Dockerfile / IaC
-
-No shell scripts (`*.sh`), no Dockerfiles, no Terraform/K8s manifests in this repo.
-`.gitlab-ci.yml` has inline `bash` + `python3` in the install-zig template
-(`.gitlab-ci.yml:39-77`). A manual review:
-
-- Uses `curl -fsSL` + `sha256sum --check --strict` — good.
-- Uses `${INDEX_FILE}` variable with `mktemp` — not a secret exposure.
-- Python3 inline script reads env, prints hash. No code-injection surface (the
-  env vars are set by the job, not user input).
-
-No findings. (confidence::confirmed)
-
-## 8. Findings Roll-up
-
-| ID | Severity | File:Line | CWE | Confidence | Status vs ledger |
-|----|----------|-----------|-----|------------|------------------|
-| SAST-01 | Low | `src/types/network.zig:419-422, 469` | CWE-1284, CWE-190 | suspected | **new** (direct struct construction bypasses validation) |
-| SAST-02 | Low | `src/types/range.zig:85-87` | CWE-190 | confirmed | duplicate of ledger S6 (closed via docstring) |
-| SAST-03 | Low | `src/types/vector.zig:106-139` | CWE-190 | confirmed | duplicate of ledger S4 (closed via docstring) |
-| SAST-04 | Medium | `src/types/url.zig:37-38, 147-158, 161` | CWE-416 | confirmed | **new** (slice-lifetime contract undocumented) |
-| SAST-05 | Medium | `src/types/url.zig:161-246` | CWE-601, CWE-918 | confirmed | **new** (userinfo / `@` in authority) |
-| SAST-06 | Low | `src/types/url.zig:161-246` | CWE-22 adj. | confirmed | **new** (no percent-decode; caller contract undocumented) |
-| SAST-07 | Medium | `src/types/url.zig:209-230` | CWE-93 | suspected | **new** (no CTL-char reject in host) |
-| SAST-08 | Low | `src/types/url.zig:41, 112-114` | CWE-1007 | confirmed | **new** (IDN/Punycode docstring gap) |
-| SAST-09 | **High** (for SSRF-gate consumers) | `src/types/network.zig:128-147, 339, 345-361` | CWE-918 | confirmed | **new** (missing link-local, unique-local, mapped-v4 classes) |
-| SAST-10 | Low | all `parse()` in `src/types/*.zig` | CWE-400 | confirmed | duplicate of inventory rank 10 |
-| SAST-11 | Low | various (see Sec 5.11) | CWE-1053 | confirmed | **new** (invariant docstring gaps) |
-| SUPPLY-01 | Low | `docs/SECURITY_GAP_ANALYSIS.md:34` vs `.gitlab-ci.yml:39-77` | CWE-829 | confirmed | ledger out-of-sync with implemented control |
-| SUPPLY-02 | Informational | `.pre-commit-config.yaml` | — | confirmed | gitleaks absent from local hooks (CI only) |
-
-### Severity counts
-
-| Severity | Count |
-|----------|-------|
-| Critical | 0 |
-| High | 1 (SAST-09, conditional on consumer usage) |
-| Medium | 3 (SAST-04, SAST-05, SAST-07) |
-| Low | 7 |
-| Informational | 2 |
-
-## 9. Tools Not Available (gaps)
-
-| Tool | Why missing | Impact |
+| Tool | Why Missing | Impact |
 |------|-------------|--------|
-| trivy / grype / syft | not installed in environment | low — no runtime deps to scan |
-| osv-scanner | not installed | low — no lockfile |
-| checkov | not installed | low — no IaC |
-| native Zig SAST | **none exist** | **medium** — relies on `zig build test` safety-check mode, fuzz, and manual review |
-| SBOM generation | done by CI `sbom-generate@v1.7.1` | covered in CI |
+| trufflehog | not installed | low -- gitleaks covers the secrets path with the same rule base |
+| osv-scanner / trivy / grype / syft | not installed | none -- `.dependencies = .{}` leaves nothing to resolve; SBOM is generated in CI via `sbom-generate@v1.7.1` |
+| shellcheck / hadolint | not installed | low -- no shell scripts, no `Dockerfile`; only inline shell is `.gitlab-ci.yml` install block, audited manually |
+| checkov | not installed | low -- `.gitlab-ci.yml` audited manually (section 5) |
+| snyk | not authenticated | low -- no runtime deps to surface |
+| Zig-native SAST | **does not exist** | high -- cannot run a rule-based scanner against Zig; compensated by targeted pattern audit (sections 4.1-4.4) plus coverage-guided fuzz in CI (section 5) |
 
-## 10. Blockers
+## 8. Blockers
 
-None for this run. Items a human reviewer should decide:
+- **Zig SAST**: no mainstream SAST tool supports Zig. `semgrep` generic rules run but cover Python/Go/JS/Java/C -- they produced no Zig findings. Compensating controls: targeted pattern audit above + coverage-guided fuzz (`zig build test --fuzz`) + `ReleaseSafe` matrix in CI (`.gitlab-ci.yml:118-167`).
+- **No root access to install packages**: `shellcheck`, `hadolint`, `trivy`, `osv-scanner` not available; workarounds applied.
+- **Snyk**: unauthenticated. Policy-blocked for ad-hoc scan.
+- **GitLab platform access**: CI-side `sbom-generate@v1.7.1` / `sbom-scan@v1.7.1` results live in GitLab pipeline artifacts; not replicated locally.
 
-1. Whether to update `docs/SECURITY_GAP_ANALYSIS.md` S7 from "Won't Do" to "Closed via CI SHA-256 verify" (SUPPLY-01).
-2. Whether to promote SAST-09 (SSRF semantics) to a P0 consumer-facing advisory now, before `Geode` (the stated consumer) adopts `.isPrivate()` as a gate.
+## 9. Deliverables
 
-## 11. Focus for security-reviewer (Phase 3)
+- `/tmp/gitleaks.json` -- gitleaks report (`[]`, 0 findings)
+- `/tmp/semgrep.json` -- semgrep auto-config unscoped (4 false positives on non-existent paths)
+- `/tmp/semgrep-scoped.json` -- semgrep scoped to repo paths (0 findings, 47 rules, 9 files)
 
-Priority-ordered adversarial probes:
+## 10. Handoff to security-reviewer
 
-1. **SAST-09 / rank 2** — craft `Ipv4Addr.parse("169.254.169.254")`, `IpAddr.parse("::ffff:169.254.169.254")`, `IpAddr.parse("::ffff:127.0.0.1")`, feed each to a hypothetical `isSafeForOutboundRequest(ip)` and show the library helpers return `false` (i.e., "private=no, loopback=no") while the target is an SSRF-critical address. Draft an explicit allowlist API, not a deny-list.
-2. **SAST-05 / rank 3** — `Url.parse("http://evil.com@trusted.com/api")` and confirm `u.host == "evil.com@trusted.com"`. Draft a `hasUserinfo()` helper and a `reject_userinfo: bool` parse option, or always split on the rightmost `@`.
-3. **SAST-07** — fuzz `Url.parse` specifically for host bytes in `[0..0x1f] U { ' ', 0x7f }`. Confirm/deny whether a response-splitting payload survives.
-4. **SAST-04 / rank 6** — write a deliberately adversarial "parse then free buffer then read host" test in `ReleaseSafe` to prove the documentation gap matters.
-5. **SAST-01** — direct struct literal `Subnet{ .network=..., .prefix_len=200 }` + `.contains(addr)` and measure panic behavior in `ReleaseSafe` vs `ReleaseFast`.
-6. **SAST-08** — cross-compare `Domain.parse("xn--e1afmkfd.xn--p1ai")` vs `Domain.parse("пример.рф")` — second rejects (good), first accepts (good) — but document the homograph pair `example.com` vs `еxample.com` (Cyrillic e) as a caller obligation.
+Reviewer should focus on:
+
+1. **SAST-PANIC-01** -- decide: downgrade `Vector.at()` panic to safety-checked index, leave as documented, or emit a typed error.
+2. **SAST-DOS-01** -- decide: add per-parser `MAX_INPUT` cap(s). Options: universal `const MAX_INPUT = 8192` in `src/root.zig`, or per-type caps that match RFC maxes (`Ipv4Addr <= 15`, `Ipv6Addr <= 45`, `Subnet <= 49`, `Url <= 8192`).
+3. **CI-SUP-01 / CI-SUP-02** -- cross-OS Zig installs on macOS/Windows lack SHA verification. Decide: bring parity with Linux (fetch `index.json`, `shasum`, verify) or accept risk because jobs are `allow_failure: true` and manual.
+4. **CI-CAT-01** / **SC-01** -- confirm the won't-do posture given `@v1.7.1` floating-tag remains.
+5. **CI-SECRETS-01** -- confirm intentional that gitleaks is CI-only (no pre-commit hook).
+
+Deep-analysis inputs unchanged from inventory: rank-1 (parser panic), rank-2 (IP/URL confusion), rank-3 (integer overflow), rank-4 (slice UAF docs), rank-8/9/10 (supply-chain + fuzz-on-MR).

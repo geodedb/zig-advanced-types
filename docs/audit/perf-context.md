@@ -2,80 +2,118 @@
 
 **Root:** /home/benji/src/devnw/zig/advanced-types
 **Platform:** GitLab (origin: `git@gitlab.com:devnw/zig/advanced-types.git`)
-**Language:** Pure Zig 0.15.1+ (toolchain in CI: `ZIG_VERSION: "0.16.0"`)
-**Type:** Header-only style value-type library, zero external deps, zero allocator for all core ops
-**Source LOC:** ~3,374 in `src/types/*.zig` (5 modules). Tests ~1,094 LOC.
+**Languages:** Pure Zig (minimum `0.16.0`; CI pins `ZIG_VERSION: "0.16.0"`)
+**Type:** Zero-dependency, zero-allocator value-type library (header-only style)
+**HEAD:** `f3adc69` (2026-04-18)
+**Source LOC:** 3,739 in `src/types/*.zig` across 5 modules; tests 1,135 LOC; bench 193 LOC.
+
+> Scope note: the task brief lists `NonEmpty`, `StrictFloat`, `Tagged`, and `Unit`
+> as library surfaces. Those types do **not** currently exist in `src/root.zig`
+> or `src/types/*.zig`. The concrete exported surfaces are `Range` (+ `IntRange`,
+> `UintRange`, `FloatRange`), `Vector` (+ `VectorF32`, `VectorI32`), and the
+> network/geographic/url families listed below. Treat this pass as the fresh
+> baseline of the types that actually ship.
 
 ## Services & Entrypoints
 
-This is a library — "entrypoints" are public APIs called by consumers (typically
-on hot paths in network, db, and embedding/search code).
+This is a library; "entrypoints" are public APIs called on consumer hot paths
+(network handlers, vector search, geo lookups, URL/domain validation).
 
 | "Service" | Entrypoint | Type | Path |
 |-----------|-----------|------|------|
+| Build: unit tests | `zig build test` | Test harness | `build.zig:18-27` |
+| Build: integration tests | `zig build test-integration` | Test harness | `build.zig:30-42` |
+| Build: type-extension tests | `zig build test-extensions` | Test harness | `build.zig:45-57` |
+| Build: fuzz | `zig build test-fuzz` | Fuzzer driver | `build.zig:60-72` |
+| Build: parser-edge tests | `zig build test-parser-edges` | Regression | `build.zig:76-88` |
+| Build: performance tests | `zig build test-performance` | Bulk-correctness | `build.zig:91-103` |
+| Build: micro-bench | `zig build bench` | ns/op exe | `build.zig:124-137`; `bench/main.zig` |
+| Build: check | `zig build check` | Fast IDE compile | `build.zig:140-148` |
 | IPv4 parsing | `Ipv4Addr.parse` | Hot-path parser | `src/types/network.zig:77` |
-| IPv6 parsing | `Ipv6Addr.parse` | Hot-path parser | `src/types/network.zig:190` |
+| IPv6 parsing | `Ipv6Addr.parse` / `parseGroups` / `findDoubleColon` | Hot-path parser (multi-pass) | `src/types/network.zig:190`, `:236` |
 | Subnet parse + CIDR membership | `Subnet.parse`, `Subnet.contains` | Hot-path classify | `src/types/network.zig:426`, `:461` |
 | MAC parsing | `Mac.parse` | Hot-path parser | `src/types/network.zig:534` |
-| URL parsing | `Url.parse` | Hot-path parser (up to 5 scans) | `src/types/url.zig:161` |
-| Domain parsing | `Domain.parse` | Hot-path parser | `src/types/url.zig:41` |
-| Vector dot / magnitude / distance | `Vector.dot`, `magnitude`, `distance` | CPU math, fixed N=3 | `src/types/vector.zig:133`, `:151`, `:166` |
-| Vector cosine distance | `Vector.cosineDistance` | CPU math (fused single-pass, P3 closed) | `src/types/vector.zig:175` |
-| Vector parse | `Vector.parse` | Text parser (split+trim) | `src/types/vector.zig:211` |
-| Haversine great-circle distance | `LatLon.haversineDistance` | CPU math, 2x `@sin`, 2x `@cos`, `@sqrt`x2, `atan2` | `src/types/geographic.zig:75` |
+| URL parsing | `Url.parse` | Hot-path parser (~6 scans) | `src/types/url.zig:161` |
+| Domain parsing | `Domain.parse` | Per-char validate, per-label bounds | `src/types/url.zig:41` |
+| Vector dot / magnitude / distance | `Vector.dot`, `.magnitude`, `.distance` | Fixed N=3 CPU math | `src/types/vector.zig:133,151,166` |
+| Vector cosine distance | `Vector.cosineDistance` | Fused single-pass (P3 closed) | `src/types/vector.zig:175` |
+| Vector parse | `Vector.parse` | Text parser (split+trim+parseFloat) | `src/types/vector.zig:211` |
+| Haversine great-circle | `LatLon.haversineDistance` | 7 transcendentals | `src/types/geographic.zig:75-92` |
 | LatLon parse | `LatLon.parse` | Text parser | `src/types/geographic.zig:106` |
-| Range ops | `Range.contains`, `overlaps`, `intersection`, `union_` | Trivial branchy compare | `src/types/range.zig:45`-`:79` |
+| Range ops | `Range.contains`, `.overlaps`, `.intersection`, `.union_`, `.span` | Branchy compare | `src/types/range.zig:45-82` |
+
+### CI Matrix (`.gitlab-ci.yml`)
+
+Debian-bookworm-slim; Zig installed per job (P4 Won't-Do). All Zig optimize
+modes exercised:
+
+- `test` / `test-integration` (Debug)
+- `test-release-safe`, `test-release-fast`, `test-release-small`
+- `test-integration-release-{safe,fast,small}`
+- `test-extensions`, `test-parser-edges`, `test-performance`
+- `bench` (ReleaseFast, exit-0 gate only; numbers inspected locally)
+- Cross-OS: `test-macos`, `test-windows`, `test-linux-aarch64`
+- Fuzz job runs Zig built-in fuzzer; kcov coverage job (`20bda63`).
 
 ## Workload Characteristics
 
-Library has no runtime RPS/SLO of its own — SLO proxies are derived from the
-expected workloads of consumers (Geode index/vector search, network handlers).
+No runtime RPS/SLO exists for the library; SLO proxies are inherited from
+expected consumers (Geode vector search, network handlers).
 
 | Parameter | Value | Source | Confidence |
 |-----------|-------|--------|------------|
-| SLO: zero hidden allocation in core ops | Must-hold | README "Zero Allocation"; `src/types/network.zig:6`; grep confirms only `Allocator` mention in `src/` is a doc comment | confirmed |
-| SLO: ns-scale per-op on hot parsers | Target | Implied by "called on hot paths in network/db code"; no explicit budget documented | suspected |
-| SLO: cosine distance single-pass | Enforced | `docs/PERF_GAP_ANALYSIS.md` P3 Closed; `vector.zig:175-189` loops once | confirmed |
-| Vector dimension | N=3 (fixed) | `src/types/vector.zig:261` (`VectorF32 = Vector(f32, 3)`) | confirmed |
-| RPS / Concurrency / Data size | UNKNOWN | No consumer-workload doc; would need Geode traffic profile to confirm | unknown |
-| Optimization modes tested in CI | Debug, ReleaseSafe, ReleaseFast, ReleaseSmall | `.gitlab-ci.yml:117-167` (P2 closed) | confirmed |
+| SLO: zero hidden allocation in core ops | Must-hold | README "Zero Allocation"; `src/types/network.zig:6`; only `Allocator` mentions in `src/` are doc comments at `url.zig:47,170` | confirmed |
+| SLO: ns-scale hot parsers | Target | Bench baselines below (Ipv4=21 ns/op, Ipv6=28 ns/op, Url=99 ns/op) | confirmed |
+| SLO: cosine distance single-pass | Enforced | `docs/PERF_GAP_ANALYSIS.md` P3 Closed; `vector.zig:175-189` | confirmed |
+| Vector dimension | N=3 (fixed re-exports) | `src/types/vector.zig` `VectorF32 = Vector(f32, 3)` | confirmed |
+| Release-mode overflow wrap documented | Yes | `README.md:69-88` "Build Modes and Overflow Semantics"; `src/root.zig:19-25` | confirmed (D1 closed via `d786b46`, `0c2ebbd`) |
+| Optimization modes gated in CI | Debug, ReleaseSafe, ReleaseFast, ReleaseSmall | `.gitlab-ci.yml:117-221` | confirmed |
+| Consumer RPS / concurrency / data size | UNKNOWN | No consumer-workload doc tracked | unknown |
 
 ## Performance Model (Hypothesized Hot Components)
 
 | Component | Resource | Why | File:Line |
 |-----------|----------|-----|-----------|
-| `Ipv4Addr.parse` | CPU, branch-pred | Byte-wise loop with branches on `.`, digit, `>255`. Called per-request in ACLs/logs. | `src/types/network.zig:77-110` |
-| `Ipv6Addr.parse` / `parseGroups` / `findDoubleColon` | CPU, branch-pred | Multiple scans: `findDoubleColon` is O(n), then left+right group parse. Variable-length, harder to predict. | `src/types/network.zig:190-279` |
-| `Url.parse` | CPU, branch-pred | ~5 linear scans (scheme `://`, `#`, `?`, `/`, `:`). P7 Won't-Do but remains a candidate for fused scan if URL-heavy consumers emerge. | `src/types/url.zig:161-246` |
-| `Domain.parse` | CPU | Per-char validation + per-label bounds check; called for every host in URL validation downstream. | `src/types/url.zig:41-62` |
-| `Subnet.contains` (IPv6) | CPU | `std.mem.eql` over `full_bytes` + masked bit compare. Called NxM in classification loops (see perf test #6). | `src/types/network.zig:461-506` |
-| `Vector.cosineDistance` | CPU, FP, SIMD-candidate | At N=3 compiler auto-vectorizes per P5 rationale. Risk if dim is generalized beyond 3. | `src/types/vector.zig:175-189` |
-| `Vector.distance` | CPU, FP | `sub().magnitude()` materializes an intermediate `[N]T`. P6 notes compiler elides at N=3 in ReleaseFast. | `src/types/vector.zig:166-169` |
-| `LatLon.haversineDistance` | CPU, FP | 2x `@sin`, 2x `@cos`, 2x `@sqrt`, 1x `atan2` = ~7 transcendentals. Dominant cost in bulk geo scans. P9 mathematically unavoidable. | `src/types/geographic.zig:75-92` |
-| `Vector.parse` / `LatLon.parse` | CPU, FP parse | `std.fmt.parseFloat` per token; brittle for ingest-heavy paths. | `src/types/vector.zig:211-236`, `geographic.zig:106-128` |
+| `Ipv4Addr.parse` | CPU, branch-pred | Byte-loop, branches on `.`, digit, `>255`; per-request in ACLs/logs | `src/types/network.zig:77-110` |
+| `Ipv6Addr.parse` / `parseGroups` / `findDoubleColon` | CPU, branch-pred | O(n) scan + left+right group parse; variable-length | `src/types/network.zig:190-279` |
+| `Url.parse` | CPU, branch-pred | ~6 linear scans (scheme `://`, scheme char-class, `#`, `?`, `/`, authority `]`/`:`). A1 Monitor | `src/types/url.zig:161-246` |
+| `Domain.parse` | CPU | Per-char validation, per-label bounds; called downstream from URL validation | `src/types/url.zig:41-62` |
+| `Subnet.contains` (IPv6) | CPU | `std.mem.eql` + masked bit-compare; NxM in classification loops | `src/types/network.zig:461-506` |
+| `Vector.cosineDistance` | CPU, FP, SIMD-candidate | N=3 auto-vectorized; risk if generalized (P5 Won't-Do, rescope candidate S3) | `src/types/vector.zig:175-189` |
+| `Vector.distance` | CPU, FP | `sub().magnitude()`; P6 notes compiler elides at N=3 in ReleaseFast | `src/types/vector.zig:166-169` |
+| `LatLon.haversineDistance` | CPU, FP | 2x `@sin` + 2x `@cos` + 2x `@sqrt` + 1x `atan2` (7 ops). S1 Monitor (precomputed-origin API) | `src/types/geographic.zig:75-92` |
+| `Vector.parse` / `LatLon.parse` | CPU, FP parse | `std.fmt.parseFloat` per token; ingest-heavy paths brittle | `src/types/vector.zig:211-236`, `geographic.zig:106-128` |
 
 ## External Dependencies
 
 | Dependency | Type | Connection Pooling | Timeout | Path |
 |-----------|------|-------------------|---------|------|
-| None (std only) | stdlib | N/A | N/A | `build.zig.zon` has no deps |
+| None (std only) | stdlib | N/A | N/A | `build.zig.zon:6` (`.dependencies = .{}`) |
 
-Consumer context: CI pulls GitLab components (`security-sast`, `zig-format`,
-`sbom-generate`, `release-semantic`) — none affect runtime perf, only pipeline
-wall-time. CI installs Zig per job (P4 Won't-Do; adds ~2.5 min per job).
+CI-only external components (no runtime impact): `gitlab.com/devnw/ci-catalog/security-sast`, `zig-format`, `sbom-generate`, `release-semantic`.
 
 ## Baseline Measurements
 
-Run on `main` (52cce4d, 2026-04-18) with Zig 0.16.0, ReleaseFast, native target.
-All 9 perf tests and 233 unit tests pass; execution time is dominated by
-compile, not run.
+Run on `main` (`f3adc69`, 2026-04-18) with Zig 0.16.0, ReleaseFast, native target (Linux 6.12).
+
+### Micro-bench (ns/op; `zig build bench -Doptimize=ReleaseFast`)
+
+| Benchmark | Iterations | ns/op | ops/sec |
+|-----------|-----------:|------:|--------:|
+| `Ipv4Addr.parse` | 100,000 | 21.55 | 46,414,395 |
+| `Ipv6Addr.parse` | 100,000 | 27.97 | 35,749,601 |
+| `Url.parse` | 100,000 | 98.54 | 10,147,652 |
+| `VectorF32.cosineDistance` | 100,000 | 1.20 | 832,182,148 |
+| `LatLon.haversineDistance` | 100,000 | 1.20 | 832,126,750 |
+
+### Test suites
 
 | Benchmark | Command | Result | Date |
 |-----------|---------|--------|------|
-| Unit tests (ReleaseFast) | `zig build test -Doptimize=ReleaseFast --summary all` | 233/233 pass; run 8 ms; compile 26 s; MaxRSS 4M run / 571M compile | 2026-04-18 |
-| Performance tests (ReleaseFast) | `zig build test-performance -Doptimize=ReleaseFast --summary all` | 9/9 pass; run 4 ms total; compile 23 s; MaxRSS 4M run / 537M compile | 2026-04-18 |
+| Unit tests (ReleaseFast) | `zig build test -Doptimize=ReleaseFast --summary all` | 248/248 pass; run 7 ms; MaxRSS 4M run / 41M compile (cached) | 2026-04-18 |
+| Performance tests (ReleaseFast) | `zig build test-performance -Doptimize=ReleaseFast --summary all` | 9/9 pass; run 5 ms; compile 23 s; MaxRSS 3M run / 541M compile | 2026-04-18 |
 
-Perf tests cover (see `tests/performance.zig`):
+Perf tests in `tests/performance.zig` exercise (correctness-at-scale, not ns/op):
 
 1. Bulk IPv4 parsing x100 valid
 2. Bulk IPv4 rejection x100 invalid
@@ -87,63 +125,48 @@ Perf tests cover (see `tests/performance.zig`):
 8. Range overlap detection: O(N^2) over 20 IntRanges
 9. Vector similarity search: 5 queries over 10 candidates
 
-These are **correctness-at-scale** tests, not micro-benchmarks — they validate
-behavior but yield no ns/op numbers. No `b.addExecutable` bench target exists;
-no `bench` / `perf` named executables. P1 ("No benchmark suite exists") was
-marked **Won't Do** in `docs/PERF_GAP_ANALYSIS.md`.
-
 ## Available Profiling Tools
 
-| Tool | Available | Version |
-|------|-----------|---------|
+| Tool | Available | Version / Path |
+|------|-----------|-----------------|
 | zig | yes | 0.16.0 (`/home/benji/.local/share/mise/shims/zig`) |
 | perf | yes | `/usr/bin/perf` |
+| Zig built-in fuzzer | yes | `zig build test --fuzz`; CI `fuzz` stage |
+| kcov coverage | yes (CI only) | `.gitlab-ci.yml` coverage job (`20bda63`) |
 | hyperfine | no | — |
 | pprof | no | — |
-| Zig built-in fuzzer | yes | `zig build test --fuzz` (used in CI `fuzz` stage with 60 s timeout) |
 
 ## Consumer Constraints (Library Perf Contract)
 
-Since these types are called on hot paths (Geode vector search, network stacks,
-log/metric tagging), the implicit contract is:
-
-- **No heap allocation in any parse/math op.** Confirmed: only one
-  `Allocator`-mentioning line exists in `src/`, and it is in a doc comment
-  (`src/types/network.zig:6`). Zero constructor takes an allocator.
-- **Stack-only value semantics.** All types are plain `struct`s holding fixed
-  arrays / scalars; URL/Domain store `[]const u8` slices *into the caller's
-  input* — lifetime of `Url.scheme`, `.host`, `.path`, `.query`, `.fragment`,
-  `.raw` is bound to the original input buffer.
-- **Branch-predictable parsing** for parsers called per-request: IPv4, MAC,
-  Subnet, Domain all use single-pass byte loops with tight state machines.
-  IPv6 + URL have multi-pass scans (acknowledged as acceptable in PERF_GAP).
-- **SIMD-friendly vector math** at N=3: `Vector` uses plain loops that Zig
-  auto-vectorizes in ReleaseFast. No `@Vector` intrinsics. P5/P8 explicitly
-  chose not to force-SIMD at N=3.
-- **Debug vs Release behavior:** `add`/`sub`/`scale`/`dot` on integer
-  `Vector` panic on overflow in Debug/ReleaseSafe, wrap in ReleaseFast
-  (`vector.zig:105`, etc.). `Range.span` has the same caveat (`range.zig:82`).
-  Consumers embedding these on hot paths should pin to ReleaseFast or
-  ReleaseSafe and be aware of the semantic shift.
+- **No heap allocation in any parse/math op.** Confirmed: `src/` references to
+  `Allocator` are doc comments only (`src/types/url.zig:47,170`, `network.zig:6`).
+  No constructor/parser takes an allocator.
+- **Stack-only value semantics.** URL/Domain store `[]const u8` slices *into
+  the caller's input buffer* — lifetime of `Url.scheme|host|path|query|fragment|raw`
+  is bound to that buffer.
+- **Branch-predictable parsing** for per-request paths: IPv4, MAC, Subnet,
+  Domain are single-pass byte loops. IPv6 + URL use multi-pass scans
+  (A1/A5 acknowledged).
+- **SIMD-friendly at N=3.** Plain loops; no `@Vector` intrinsics. Relies on
+  LLVM auto-vectorization. P5/P8 explicitly deferred explicit SIMD.
+- **Release-mode overflow semantics are documented** (D1 closed). `Vector`
+  `add/sub/scale/dot/magnitudeSquared` and `Range.span` panic in Debug/
+  ReleaseSafe and wrap in ReleaseFast/ReleaseSmall — see `README.md:69-88`
+  and `src/root.zig:19-25`.
 
 ## Unknowns & Assumptions
 
-- **No ns/op numbers exist.** Would need `zig build bench` target (executable
-  using `std.time.Timer` or similar) to land real baselines. PERF_GAP P1
-  explicitly declined this as scope. **Recommendation: revisit for audit.**
-- **No @Vector / SIMD usage.** Relying on compiler auto-vectorization at N=3.
-  If consumers ever want N=128/384/768 (embedding-model dimensions), the
-  generic `Vector(T,N)` would need SIMD-conscious rework — current P5/P8
-  explicitly scoped this out.
-- **Multi-pass URL parse.** P7 Won't-Do at sub-microsecond per URL, but if a
-  reverse-proxy-style consumer materializes, a single-pass scan becomes
-  attractive.
-- **Haversine transcendental count.** 6–7 FP transcendentals per call. For
-  bulk geo (e.g., 10k-pt nearest-neighbor sweep), batching / approximation
-  could matter. P9 flagged "mathematically unavoidable" — but approximate
-  variants (equirectangular, Vincenty) are standard alternatives worth listing.
-- **Consumer workload profile is unknown.** No doc describes realistic RPS,
-  batch sizes, or latency budgets for downstream Geode code. Would unblock
-  targeted benchmark selection.
-- **Integer overflow semantics on `Vector`/`Range`** differ across optimize
-  modes; no doc warns consumers choosing ReleaseFast.
+- **ns/op baselines now exist** but are single-host, single-run (one Linux
+  box); cross-OS macOS/Windows runs are gated on CI exit-0 only, so absolute
+  numbers there remain unknown.
+- **No @Vector / SIMD usage.** Compiler auto-vectorization at N=3 is assumed,
+  not verified by disassembly in this pass. If consumers ask for N>=16, S3
+  rescope would be required.
+- **Consumer workload profile UNKNOWN.** No doc describes Geode (or other)
+  RPS, batch sizes, latency budgets. Would unblock A1 (`Url.parse` fused
+  scan) and S1 (precomputed-origin haversine) Monitor -> Fix decisions.
+- **Haversine transcendental count (7).** P9 corrected from 6; S1 offers
+  ~15 % win on 1-to-many sweeps via `prepareOrigin()`. Still Monitor.
+- **Task-brief types not present.** `NonEmpty`, `StrictFloat`, `Tagged`,
+  `Unit` are not exported in this repo at `f3adc69`; only `Range`, `Vector`,
+  `network.*`, `geographic.*`, `url.*` ship.

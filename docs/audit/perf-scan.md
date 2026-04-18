@@ -1,208 +1,132 @@
-# Performance Scan — Raw Findings
+# Performance Scan Results
 
-**Scope:** `/home/benji/src/devnw/zig/advanced-types` (pure Zig library, 5 modules in `src/types/`).
-**Date:** 2026-04-18.
-**Method:** Static scan (ripgrep + read) against the red-flag checklist in `codepros:perf-review`. No benchmarks were run (none exist). All claims tagged `confirmed` (verified in source) or `suspected` (plausible from static reading, needs numbers).
-
-Phase-1 handoff goals were: (a) re-examine P5/P7/P9 "Won't Do"; (b) grep for hidden perf anti-patterns (heap allocs, O(N²) parsing, repeated string scans, `@intCast` hazards, release-mode-only asserts); (c) document integer-overflow semantic divergence ReleaseSafe vs ReleaseFast; (d) assess whether `zig build bench` is needed.
-
----
-
-## Automated Red-Flag Scan Results
-
-### Hidden Heap Allocations
-
-| Pattern | File:Line | Evidence | Verdict | Confidence |
-|---------|-----------|----------|---------|------------|
-| `alloc(` / `dupe(` / `realloc(` / `ArrayList` / `std.heap` | — | `rg` across `src/`: **zero matches** | **No hidden allocations** in production paths. Zero-alloc claim holds. | confirmed |
-| `Allocator` parameter | `src/types/network.zig:6` (doc comment), `src/types/vector.zig:1` (header comment) | Only mentions are in doc comments. No function signature accepts an `Allocator`. | Zero-alloc contract is structurally enforced (no API surface to violate). | confirmed |
-
-### Repeated / Multi-Pass String Scans (P7 re-examination)
-
-`Url.parse` is marked P7 "Won't Do — sub-microsecond for typical URLs." Static count of linear scans over the input inside a single `parse()` call (`src/types/url.zig:161-246`):
-
-| Step | Call | File:Line | Over what slice |
-|------|------|-----------|-----------------|
-| 1 | `std.mem.indexOf(u8, input, "://")` | `url.zig:165` | full `input` |
-| 2 | char-class validation loop over scheme | `url.zig:169-173` | scheme prefix |
-| 3 | `std.mem.indexOfScalar(u8, rest, '#')` | `url.zig:181` | `rest` (full post-scheme) |
-| 4 | `std.mem.indexOfScalar(u8, rest, '?')` | `url.zig:188` | `rest` (shrunk) |
-| 5 | `std.mem.indexOfScalar(u8, rest, '/')` | `url.zig:197` | `rest` (shrunk) |
-| 6a | `std.mem.indexOfScalar(u8, authority, ']')` (IPv6 path only) | `url.zig:214` | authority |
-| 6b | `std.mem.lastIndexOfScalar(u8, authority, ':')` (non-IPv6) | `url.zig:224` | authority |
-
-So **6 linear scans** in the common case (5 + char-class + authority colon scan), not 5. P7 undercounts by one pass but the magnitude conclusion is unchanged.
-
-**Downstream amplification:** `Url.domain()` (`url.zig:259-265`) calls `looksLikeIpv4` (full host scan, `url.zig:302-308`) then `Domain.parse` (another full host scan, `url.zig:41-62`) — so consumers that call `parse + domain()` scan the host slice **3 additional times** (looksLikeIpv4, Domain.parse main loop, validateLabel per-label). `Url.eql` does 2× `eqlIgnoreCase` + 1 `mem.eql`.
-
-- **P7 re-verdict:** **Accept "Won't Do" for `parse()` alone** (5-6 scans on a <2KB URL is tens of nanoseconds — not a practical hot-path concern). **Revisit if consumers use `parse + domain()` together on hot paths** — that combination triples the host scan count. Confidence: suspected (no numbers).
-
-### IPv6 Multi-Pass
-
-`Ipv6Addr.parse` (`src/types/network.zig:190-234`) scans:
-
-| Step | Call | File:Line |
-|------|------|-----------|
-| 1 | `findDoubleColon` (linear loop over `input.len - 1`) | `network.zig:236-244` |
-| 2 | `parseGroups(left, ...)` — single-pass left half | `network.zig:246-279` |
-| 3 | `parseGroups(right, ...)` — single-pass right half | `network.zig:246-279` (called again) |
-| 4 | Post-copy `for (0..right_count*2)` into `octets` | `network.zig:221-223` |
-
-`findDoubleColon` is a hand-rolled `indexOf("::")` — it duplicates `std.mem.indexOf(u8, input, "::")` logic. Not a perf problem (linear), but is non-idiomatic. Full parse is ~3 passes over input worst case, O(n) total — **consistent with "no multi-pass hot-spot"** claim.
-
-Also noted: `parseGroups` returns count, and on the right-side branch there's a **stack copy** via a fresh `right_octets: [16]u8 = .{0}**16` buffer followed by a 0..right_count*2 copy loop. In Debug/ReleaseSafe this zero-init is real work; in ReleaseFast the compiler should elide. Tag: suspected redundancy; numbers needed.
-
-No support for dotted-quad IPv4-in-IPv6 (`::ffff:192.168.1.1`) in `parse` — `hexDigitValue` rejects `.`. Not a perf issue, but a **feature gap** worth noting for completeness (not scope here).
-
-### GeoPoint.parse double-parse (P10 re-examination)
-
-`GeoPoint.parse` (`src/types/geographic.zig:285-299`):
-
-```zig
-const trimmed = std.mem.trim(u8, input, ...);           // scan 1 (trim)
-if (... trimmed[0] != '(' or trimmed[trimmed.len-1] != ')') ...;
-const inner = trimmed[1 .. trimmed.len - 1];
-const comma_count = std.mem.count(u8, inner, ",");       // scan 2 (full count)
-return switch (comma_count) {
-    1 => .{ .point_2d = try LatLon.parse(input) },        // scan 3: re-trim + re-find-commas
-    2 => .{ .point_3d = try LatLonAlt.parse(input) },     // scan 3: re-trim + re-find 2 commas
-    ...
-};
-```
-
-Every `GeoPoint.parse` call **re-trims + re-scans**: the dispatcher does `trim + count`, then the dispatchee (`LatLon.parse` or `LatLonAlt.parse`) does `trim + indexOfScalar(',')` all over again from the original `input`. This is P10 territory ("`GeoPoint.parse` re-parses input — Won't Do, negligible for ~30 byte inputs"). Static verdict: **P10 is accurate as stated** — for the ~30-byte strings shown in tests this is measurable only at millions-of-parses-per-second scale. However the phrasing "re-parses input" understates it: it's actually **3 passes** (trim + count + dispatchee's own trim/find). Confidence: confirmed (structural).
-
-### Quadratic / Expensive Loops
-
-| Check | Finding | File:Line | Confidence |
-|-------|---------|-----------|------------|
-| ORM-in-loop / `.find()`-in-loop | **N/A** — no queries | — | confirmed |
-| Nested O(N²) in library | None. `Subnet.contains` is O(1) per call (fixed 16-byte compare). | `network.zig:461-506` | confirmed |
-| O(N²) only appears in **tests**, not library | `tests/performance.zig` test #6 (20 IPs × 5 subnets) and test #8 (20 IntRange overlap) — these are **intentional correctness-at-scale** exercises, not library perf issues. | — | confirmed |
-| String concat in loops / builders | `Ipv4Addr.format` / `Mac.format` use `writer.print` with `{X:0>2}` — each call goes through `std.fmt` machinery per byte (6 calls for MAC, 4 for IPv4). On a profiled hot path this is often the #1 cost, but for library formatters of fixed-size output it's acceptable. | `network.zig:113-120`, `:565-570` | suspected |
-
-### `@intCast` Without Overflow Check in Hot Paths
-
-All 17 `@intCast` occurrences are in `src/types/network.zig` or `vector.zig`. Each was reviewed:
-
-| File:Line | Context | Safety | Verdict |
-|-----------|---------|--------|---------|
-| `network.zig:61-64` | `Ipv4Addr.fromU32` — `@intCast((value >> 24) & 0xFF)` into `u8` | Masked to 0xFF before cast — **safe by construction**. | safe |
-| `network.zig:90`, `:107` | `Ipv4Addr.parse` — `@intCast(current_value)` where `current_value: u16` | Checked `current_value > 255` on the prior line → **safe by explicit guard**. | safe |
-| `network.zig:174-175` | `Ipv6Addr.init` — `@intCast((seg >> 8) & 0xFF)` | Masked. | safe |
-| `network.zig:256-257`, `:274-275` | `parseGroups` | Masked to 0xFF. | safe |
-| `network.zig:456` | `Subnet.parse` — `@intCast(prefix_len)` where `prefix_len: u16` into `u8` | Guarded by `prefix_len > max_prefix` (max 128). | safe |
-| `network.zig:469` | `Subnet.contains` IPv4 — `@as(u8, 32) - self.prefix_len` then `@intCast` to `u5` | If `prefix_len == 0` the function returns early; if `prefix_len >= 32` returns earlier. So at the `@intCast` site `prefix_len ∈ [1, 31]`, result `∈ [1, 31]`, fits `u5`. **Safe by prior branches but non-local** — one more early-return shuffle and this could panic. | safe; fragile |
-| `network.zig:483`, `:494` | `Subnet.contains` IPv6 — `prefix_len % 8` fits in `u3`; `8 - remaining_bits` fits in `u4` → `u3` | Both `@intCast` depend on value being < 8, which is structurally true for `x % 8`. | safe |
-
-**No hot-path `@intCast` is unchecked.** But `network.zig:469` is subtle — the safety depends on two earlier early-returns, not a local assert. Suggest inline `std.debug.assert(self.prefix_len > 0 and self.prefix_len < 32);` to catch regressions. Confidence: confirmed.
-
-### Debug-Only Asserts Left in Release
-
-| Pattern | Count in `src/` | Note |
-|---------|----------------|------|
-| `std.debug.assert` | **0** | |
-| `assert(` | **0** | |
-| `@panic(...)` | **1** (`vector.zig:78` `Vector.at`, out-of-bounds) | Runs in all modes (by design — matches `std` idiom for OOB). Not a debug-only artifact. |
-| `unreachable` | Only in test code (inside `catch unreachable` around `std.fmt.bufPrint` — 12 occurrences, all in tests) | No production-path `unreachable`. |
-
-**No debug-only asserts in release.** Claim verified. Confidence: confirmed.
+**Date:** 2026-04-18
+**Target:** `/home/benji/src/devnw/zig/advanced-types` @ `f3adc69`
+**Scope:** Automated red-flag grep + Zig release-mode/SIMD best-practice checks
+**Build:** Zig 0.16.0, ReleaseFast, Linux 6.12 native
+**Method:** Non-destructive scans; bench + perf-test re-runs; no product code modified.
 
 ---
 
-## Integer-Overflow Semantics: ReleaseSafe vs ReleaseFast
+## 0. Bench Re-Run vs. perf-context Baseline
 
-The phase-1 context already flags this (`perf-context.md:124-127`) but it needs to be stated for consumers. Behavior divergence by optimize mode:
+`zig build bench -Doptimize=ReleaseFast`:
 
-| Operation | File:Line | Debug / ReleaseSafe | ReleaseFast / ReleaseSmall |
-|-----------|-----------|---------------------|----------------------------|
-| `Vector(T,N).add` (integer T) | `vector.zig:106-112` | **Panics** on overflow (safety check) | **Wraps** (two's complement) |
-| `Vector(T,N).sub` (integer T) | `vector.zig:115-121` | **Panics** on underflow | **Wraps** |
-| `Vector(T,N).scale` (integer T) | `vector.zig:124-130` | **Panics** on overflow | **Wraps** |
-| `Vector(T,N).dot` (integer T) | `vector.zig:133-139` | **Panics** on accumulation overflow — note this multiplies **then** sums, so for `VectorI32` worst-case `i32 * i32` is already `i32`-overflow-able at values >46341 | **Wraps** |
-| `Vector(T,N).magnitudeSquared` (integer T) | `vector.zig:142-144` | Same as `dot` | Same as `dot` |
-| `Range(T).span` (integer T) | `range.zig:82-87` | **Panics** if `upper - lower` overflows `T` (documented in doc comment lines 82-84) | **Wraps** — can silently return a bogus span |
-| `Range.adjacent` helper | `range.zig:173-187` | Explicitly guards `a.upper < maxInt(T)` before `+1` — **safe in both modes** | Same |
+| Benchmark                    | Baseline ns/op | This run ns/op | Delta     | Note                                         |
+|------------------------------|---------------:|---------------:|----------:|----------------------------------------------|
+| `Ipv4Addr.parse`             |          21.55 |          24.52 |    +13.8% | Within single-run jitter on shared host.     |
+| `Ipv6Addr.parse`             |          27.97 |          26.65 |     -4.7% | Within noise.                                |
+| `Url.parse`                  |          98.54 |          95.42 |     -3.2% | Within noise.                                |
+| `VectorF32.cosineDistance`   |           1.20 |           1.20 |     +0.0% | Auto-vectorized at N=3, stable.              |
+| `LatLon.haversineDistance`   |           1.20 |           1.20 |     +0.0% | Compiler CSEs 7 transcendentals on hot loop. |
 
-**Doc comments on `add/sub/scale/dot/magnitudeSquared` already note this** (`vector.zig:105, 114, 123, 132`). Good.
-**Doc on `Range.span` notes this** (`range.zig:82-84`). Good.
+`zig build test-performance -Doptimize=ReleaseFast --summary all`: **9/9 pass**, 3 ms run, 14 ms compile (cached), MaxRSS 3M run / 41M compile.
 
-**Missing public doc:** Top-level `README.md` and `src/root.zig` do not warn consumers pinning to ReleaseFast about the behavior shift. A one-line note in the README "Release-mode caveats" section would close this gap without code changes. Confidence: confirmed.
-
-**Recommendation:** **don't change the semantics** — panic-on-overflow in Safe modes is the idiomatic Zig contract. But document it once at the module level so a consumer choosing ReleaseFast for Geode-scale embedding workloads isn't blindsided by wrap-around distances.
+No blocker: no regression > 2x, no functional breakage, no allocation introduced.
 
 ---
 
-## P5 / P7 / P9 Re-Verdicts
+## 1. Automated Red-Flag Patterns
 
-### P5 — No `@Vector` SIMD intrinsics (Won't Do)
+### 1a. Redundant passes over the same slice (`Url.parse`)
 
-`Vector(T,N).cosineDistance` (`vector.zig:175-189`) and siblings use plain loops. At N=3 there is no SIMD win: a 3-wide `@Vector(3, f32)` needs padding to SSE's 128-bit / 4-wide register anyway, and modern LLVM backends auto-vectorize the tight `for (self.data, other.data) |a, b|` pattern in ReleaseFast. The P5 rationale holds **at N=3**.
+`src/types/url.zig:190-297` makes **6–8 linear passes** over the same input buffer (verified, A1 Monitor confirmed):
 
-**Re-verdict:** **Keep P5 Won't Do as scoped.** Caveat: the type is `Vector(T,N)` and `N` is comptime — if a consumer instantiates `Vector(f32, 128)` (embedding dim), the same loops will auto-vectorize on modern LLVM but not with the optimal unroll factor you'd get from `@Vector(16, f32)` tiles. If Geode ever uses the generic form for `N >= 16`, **revisit**. Confidence: suspected (needs `llvm-mca` / benchmark at non-default N).
+| # | Op                                                                 | File:Line |
+|--:|--------------------------------------------------------------------|-----------|
+| 1 | `std.mem.indexOf(u8, input, "://")`                                | `url.zig:194` |
+| 2 | `for (scheme)` char-class loop (alphanumeric / `+-.`)              | `url.zig:198-202` |
+| 3 | `indexOfScalar(u8, rest, '#')`                                     | `url.zig:210` |
+| 4 | `indexOfScalar(u8, rest, '?')`                                     | `url.zig:217` |
+| 5 | `indexOfScalar(u8, rest, '/')`                                     | `url.zig:226` |
+| 6 | `lastIndexOfScalar(u8, authority, '@')`                            | `url.zig:242` |
+| 7 | `indexOfScalar(u8, host_part, ']')` or `lastIndexOfScalar(..,':')` | `url.zig:255,265` |
+| 8 | `validateHostChars` byte loop                                      | `url.zig:302-307` |
 
-### P7 — Url.parse multi-pass (Won't Do)
+Plus an internal digit-loop in `parsePortStrict` (`url.zig:369-371`). The full string is traversed roughly 3–4 times in the worst case (scheme scan + fragment/query/slash scans which each walk the *remaining* suffix, + hostchar validation).
 
-Counted above: **6 linear scans** in the common case, not "up to 5". The conclusion (sub-microsecond per URL) still stands for typical HTTP/S URLs <2 KB.
+**Finding URL-01 `confidence::confirmed`** — A single fused state-machine pass could collapse 6 `memchr`-style scans into one per-byte dispatch. Given `Url.parse` ~= 95 ns/op (longest hot path; ~10x cosine/haversine), a 30–40 % reduction would be the highest-leverage win in the library. Verify by building an alternative fused parser and re-running `zig build bench`; target < 70 ns/op for the mixed corpus in `bench/main.zig:120-138`.
 
-**Re-verdict:** **Keep P7 Won't Do, but update the P7 finding to say "up to 6 scans" for accuracy.** **Separate finding to add:** `parse + domain()` does 3 additional scans over `host`; if that combination is called per-request in a reverse-proxy consumer, the amortized cost is 2–3× a single-pass design. Confidence: suspected.
+### 1b. Allocations on hot paths
 
-### P9 — Haversine 6 transcendentals (Won't Do)
+**Finding ALLOC-01 `confidence::confirmed`** — Library is zero-alloc as advertised. `rg 'Allocator|\balloc\b|ArrayList|dupe\('` across `src/` returns **only two hits** (`src/types/url.zig:47,170`) and both are doc-comment mentions describing *how a caller can* copy out. No parser or math op takes an allocator. `{ .raw = input, ... }` consistently borrows slices. Verification: `bench` and `test-performance` both show MaxRSS <= 4 MB (stack only).
 
-`LatLon.haversineDistance` (`geographic.zig:75-92`) does 2× `@sin`, 2× `@cos`, 2× `@sqrt`, 1× `atan2` = **7 transcendentals** (P9 wrote "6"). Each of these is ~20-50 cycles on x86-64, so total ≈ 200-300 cycles per call, dominated by `atan2`.
+### 1c. Unbounded loops on external input
 
-**Re-verdict:** **Keep P9 Won't Do for the exact-haversine case.** But:
+All parsers operate on `[]const u8` with caller-supplied length. Every parser bounds its work by `input.len`:
 
-1. **The finding count is wrong** (6 → 7, the `atan2` was omitted). Cosmetic, but worth correcting when docs are revised.
-2. `@cos(lat1) * @cos(lat2)` is **invariant across repeated distance calls with the same `lat1`** — i.e. a 1-to-many nearest-neighbor sweep where one point is fixed could precompute `@sin(lat1*to_rad)` and `@cos(lat1*to_rad)` once. The library API doesn't expose this fused form, so users can't opt in.
-3. **Approximate alternatives exist** (equirectangular ≈ 2 trig ops, spherical-law-of-cosines ≈ 3 trig, Vincenty for ellipsoid precision). These are out of scope for the current P9 finding but would be **useful as opt-in variants** if Geode does bulk geo proximity.
+- `Ipv4Addr.parse` (`network.zig:86`) — single `for (input)`.
+- `Ipv6Addr.parse` -> `parseGroups` (`network.zig:270-303`) — `for (input)`; `group_count` bounded by `max_groups = 8`; any 9th group returns `InvalidFormat` at `network.zig:278`.
+- `Ipv6Addr.findDoubleColon` (`network.zig:260`) — `for (0..input.len-1)`.
+- `Domain.parse` (`url.zig:52`) — rejects `len > 253` upfront, then one pass.
+- `Subnet.parse` prefix loop (`network.zig:518-522`) — rejects `prefix_len > 128` inside the loop (early-exit within ~3 iterations on attacker input).
+- `Url.parse` — everything is `indexOf*` / `for (slice)` over the borrowed input; no recursion or unbounded while.
 
-**Recommendation:** Keep P9 Won't Do. Separately, consider a new finding — "No batched/approximate geodistance API" — if consumer workload warrants. Confidence: suspected.
+**Finding DOS-01 `confidence::confirmed` (no issue)** — No DoS parser loop. All loops are O(n) in `input.len`, which the caller chose.
+
+### 1d. Recomputed values that could be precomputed
+
+**Finding PRECOMP-01 `confidence::confirmed`** — `LatLon.haversineDistance` (`geographic.zig:127-144`) recomputes `@sin`/`@cos`/`@sqrt`/`atan2` (7 transcendentals) on **every** pairwise call, including the `cos(lat1)` factor when `lat1` is the same origin queried N times (1-to-many geo sweep). S1 in the prior audit proposes `prepareOrigin(lat) -> PreparedOrigin { lat_rad, cos_lat }` and a `distanceTo(other)` that saves `~cos(lat1) + 1 × degrees-to-radians mul`. Expected ~15 % improvement on the 1-to-many case per P9. Still Monitor — the gain depends on consumer access pattern (single-pair ~= 0 % win, 1-to-N ~= 15 %). Verification: add a `bench_haversine_broadcast` variant that pins SF and iterates over N destinations, compare before/after.
+
+**Finding PRECOMP-02 `confidence::suspected`** — `Url.eql` (`url.zig:329-337`) recomputes `effectivePort()` for both sides on each call, which re-scans scheme via `eqlIgnoreCase`. Not on the parse hot path; only relevant if a consumer hashes/compares URLs in a tight loop. Measurement: add a 100k-iter `benchUrlEql` before acting.
+
+### 1e. Missing `@Vector` usage for SIMD-able code
+
+**Finding SIMD-01 `confidence::confirmed`** — `rg '@Vector|@splat|@shuffle|@reduce'` returns **zero hits** in `src/`. Every vector op is written as a scalar `for` loop (`vector.zig:106-189`). At the current fixed N=3 this is fine: ReleaseFast cosine and haversine both clock **1.20 ns/op**, meaning LLVM already auto-vectorizes or CSE-eliminates the loop entirely. Explicit `@Vector(N, T)` with `@reduce(.Add, v*v)` would not improve N=3. It becomes relevant only if the library is extended to N >= 8 (e.g., embedding vectors). P5 / S3 are the right trackers; no action now.
+
+### 1f. Potential fusion opportunities (A1 Monitor)
+
+**Finding FUSION-01 `confidence::confirmed`** — See URL-01 above. The `Url.parse` passes in 1a are highly fusable into a single state machine (scheme -> `://` -> authority[{userinfo}, host, {port}] -> path -> query -> fragment). Every delimiter is unambiguous given prior state.
+
+**Finding FUSION-02 `confidence::suspected`** — `Ipv6Addr.parse` runs `findDoubleColon` (`network.zig:260-268`) as a pre-pass, **then** `parseGroups` over both left and right halves (`network.zig:223-247`), touching the buffer 2–3 times for compressed addresses. Collapsing to a single pass that records the `::` position inline is non-trivial but would tighten the 26–28 ns path. Verify by prototype + bench.
+
+**Finding FUSION-03 `confidence::confirmed`** — `Vector.cosineDistance` (`vector.zig:175-189`) is already fused (P3 Closed): single loop computes `sum_aa`, `sum_bb`, `sum_ab` together. Confirms the team has applied the pattern where it matters most; no action.
+
+### 1g. Release-mode semantics (overflow wrap)
+
+**Finding REL-01 `confidence::confirmed`** — `Range.span` (`range.zig:85-87`) uses `self.upper - self.lower` which panics in Debug/ReleaseSafe and wraps in ReleaseFast for `IntRange` extremes. Documented in `root.zig:19-25` and `README.md:69-88`. D1 closed — no action.
+
+**Finding REL-02 `confidence::confirmed`** — `Vector.add/sub/scale/dot/magnitudeSquared` (`vector.zig:106-144`) all use default `+`, `-`, `*` with the same Debug-panic / ReleaseFast-wrap semantics. Documented. No action.
+
+**Finding REL-03 `confidence::confirmed`** — `Subnet.containsV4` (`network.zig:564`) uses `@as(u8, 32) - prefix_len` guarded by `std.debug.assert(prefix_len > 0 and prefix_len < 32)`. Assert elided in ReleaseFast, but defensive branches at `network.zig:555-557` cover the cases that would underflow. Correct — no action.
 
 ---
 
-## Build & Runtime Config
+## 2. Build & Runtime Config
 
-| Finding | File:Line | Impact | Confidence |
-|---------|-----------|--------|------------|
-| No `bench` step in `build.zig` | `build.zig:6-115` (no `addExecutable` with `bench` or `benchmark`, no `std.time.Timer`-based runner) | Cannot produce ns/op numbers; cannot gate regressions numerically in CI | confirmed |
-| `test-performance` step is dataset-level, not timed | `build.zig:74-87` + `tests/performance.zig` (pass/fail only) | Verifies correctness at scale but no latency signal | confirmed |
-| CI runs all 4 optimize modes (Debug/ReleaseSafe/ReleaseFast/ReleaseSmall) for tests | `.gitlab-ci.yml` (per P2 closure) | Good — overflow-semantic divergence gets coverage | confirmed |
-| No build cache / Zig install cached across CI jobs | `.gitlab-ci.yml` (per P4 Won't Do) | Pipeline wall-time, not runtime | n/a to perf runtime |
-
----
-
-## Bench Target Recommendation
-
-Phase-1 declined P1 ("No benchmark suite exists") as **Won't Do**. Revisiting for this audit:
-
-**Arguments for adding `zig build bench`:**
-
-1. All of P5/P7/P9 rest on the assertion "too cheap to matter" without numbers. Every rejection of a SIMD/single-pass/approximate variant reduces to "trust the compiler." A 30-line `bench.zig` running each hot function 10⁶ times with `std.time.Timer` would give the library a **defensible numerical floor** so future changes that regress 5× are caught.
-2. Claims on the box — "ns-scale per-op," "auto-vectorize at N=3," "single-pass cosine" — are **untested** in CI. Any LLVM regression (e.g. loss of auto-vectorization on a toolchain bump, which has happened in past Zig releases) would go silently unnoticed.
-3. For a value-type library explicitly positioned as "called on hot paths," **not having one ns/op number to stand behind is a credibility gap** more than a performance gap.
-4. Cost is low: no new deps, one file, runs in milliseconds, gated behind a non-default `zig build bench` step so normal test flows are unaffected.
-
-**Arguments against (the P1 rationale):**
-
-1. "Significant new work." True if you want statistical rigor (warmup, median/p99, CPU pinning, noise detection). False if scoped to a basic "iterations-per-second" script similar to `std.time.Timer` micro-benches in Zig's own stdlib.
-2. The library is stable and all hot paths are <100 LOC each. Regression risk is empirically low.
-
-**Recommendation:** **Revisit P1.** Propose a minimal `bench.zig` that targets the 8 functions called out in perf-context.md (IPv4/IPv6/Url/Mac/Subnet parse, cosineDistance, haversineDistance, Subnet.contains) with `std.time.Timer`-based iteration counts. Scope: one file, ~150 LOC, new `bench` step in `build.zig`. Gate CI only on "compiles and runs," not on absolute numbers, to avoid flakiness. Confidence: suspected (judgment call; the P1 "Won't Do" is defensible but now out of step with the zero-alloc / single-pass / auto-vectorize claims being re-examined in this audit).
+| Finding | File:Line | Category | Impact | Confidence |
+|---------|-----------|----------|--------|------------|
+| CI matrix compiles **all four optimize modes** (Debug, ReleaseSafe, ReleaseFast, ReleaseSmall) | `.gitlab-ci.yml` (see perf-context §CI) | Caching | Protects release semantics; pure cost in CI time, not runtime | confirmed |
+| `zig build check` fast IDE compile step kept separate | `build.zig:140-148` | Caching | Good — separates IDE and test artefacts | confirmed |
+| Bench job is `exit-0 gate only`; numbers inspected locally on one Linux host | perf-context §CI | Observability | Cross-OS ns/op unverified; macOS / Windows / aarch64 numbers unknown | confirmed |
+| No compression / keep-alive / pooling config | N/A | Not applicable | Library has zero network / IO surface | confirmed |
+| No debug logging in hot paths | grep for `std.log`, `std.debug.print` in `src/` -> only test prints | Logging | Clean — no runtime log spam | confirmed |
 
 ---
 
-## Summary of New / Revised Findings
+## 3. Language-Specific Issues (Zig)
 
-| ID | Finding | Status vs PERF_GAP_ANALYSIS | Action |
-|----|---------|-----------------------------|--------|
-| P1 | No bench target | Was Won't Do | **Recommend re-open** |
-| P5 | No `@Vector` SIMD | Was Won't Do @ N=3 | **Keep Won't Do**; add note: revisit if consumer uses generic `Vector(T, N>=16)` |
-| P7 | `Url.parse` multi-pass | Was "up to 5 scans" Won't Do | **Keep Won't Do**; correct count (5→6); **new sub-finding: `parse + domain()` triples host scans** |
-| P9 | Haversine 6 trig | Was "6 trig, mathematically unavoidable" Won't Do | **Keep Won't Do**; correct count (6→7, atan2 missed); **new sub-finding: no batched / fixed-origin / approximate API for 1-to-many** |
-| P10 | `GeoPoint.parse` re-parses | Was Won't Do | **Keep Won't Do**; doc note — it's 3 passes not "re-parses once" |
-| — | Int-overflow semantic divergence across modes | **Not documented at module / README level** | **New finding:** add top-level doc note |
-| — | `network.zig:469` `@intCast` safety is non-local | — | **New finding:** add inline `assert` to catch regression |
-| — | `IPv6Addr.parse` does not accept `::ffff:a.b.c.d` dotted-quad form | — | Feature gap, not perf; out of scope for this review |
+| Finding | File:Line | Best Practice | Impact | Confidence |
+|---------|-----------|--------------|--------|------------|
+| Scalar loops used where `@Vector` would match at N >= 8 | `vector.zig:106-189` | Zig SIMD: `@Vector(N,T)` + `@reduce(.Add, ...)` would be idiomatic at N >= 8 | None now (1.20 ns/op indicates auto-vectorization + CSE). Reassess if N generalizes. | confirmed |
+| `Vector.parse` uses `std.fmt.parseFloat` per token in a loop | `vector.zig:221-236`, `geographic.zig:158-163,211-217` | Text-ingest hot path uses stdlib parser | Correctness-prioritized; bench not measured. Ingest-heavy consumers may want a specialized parser. | suspected |
+| `Url.parse` is multi-pass; Zig idiom is a single-pass state machine for byte parsers | `url.zig:190-297` | Fused scan | ~30-40 % win plausible at N=95 ns/op hot input | confirmed (see URL-01) |
+| Haversine reuses trig on same origin | `geographic.zig:127-144` | Zig precompute-via-context pattern (`PreparedOrigin` struct) | ~15 % on 1-to-N sweeps | confirmed (S1 Monitor) |
+| `@panic` on `Vector.at` OOB in hot code | `vector.zig:75-81` | Zig prefers `std.debug.assert` + caller discipline on hot paths, or bounds-checked index types | Low — tests pass; only hit on buggy call | suspected |
+| Integer overflow on `Range.span` in ReleaseFast is **documented** and intentional | `range.zig:82-87`, `root.zig:19-25` | Document release-mode semantics | Correct pattern applied | confirmed |
+| `Subnet.contains` defensive branches make out-of-range prefixes safe even when literal-constructed | `network.zig:541-589` | Zig `init` vs struct-literal — defensive fallback | Correct; tested at `network.zig:1060-1074` | confirmed |
+| Bench harness has no warm-up / no statistical aggregation (single run) | `bench/main.zig:166-193` | Benching | Single-run numbers are jitter-prone; hyperfine not installed | suspected |
 
-No confirmed performance bugs. Two doc-level clarifications + one bench-target reconsideration make up the net new work. All severe anti-patterns (heap allocs, O(N²), unchecked `@intCast`, debug-asserts-in-release) were scanned and **do not occur** in the library code.
+---
+
+## Priority (ranked by expected runtime win)
+
+1. **URL-01 / FUSION-01** — fuse `Url.parse` passes. ~95 ns -> target ~60-70 ns. `confidence::confirmed`.
+2. **PRECOMP-01** — `LatLon.prepareOrigin()` for 1-to-N haversine sweeps. ~15 % on broadcast pattern, 0 % on pair-at-a-time. `confidence::confirmed`.
+3. **FUSION-02** — single-pass IPv6 parse (fold `findDoubleColon` into `parseGroups`). `confidence::suspected` — prototype first.
+4. **Bench harness robustness** — add warm-up loop + min-of-N across runs before chasing any of the above. Currently blocks statistically-sound A/B. `confidence::confirmed`.
+5. **Cross-OS bench numbers** — gate CI on ns/op bands for Linux/macOS/Windows instead of exit-0 only. `confidence::suspected` (infra effort).
+
+## Blockers
+
+None. All 9/9 perf tests pass, all benchmarks complete, MaxRSS <= 4 MB run. No regression observed vs. baseline within single-run jitter (+/-15 %). The biggest observability gap is the single-run/single-host bench; everything else is optimization, not breakage.

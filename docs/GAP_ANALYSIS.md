@@ -1,8 +1,8 @@
 # GAP Analysis
 
-Last updated: 2026-03-23
+Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
 
-Repository status: types implemented from spec; Geode source not yet wired as consumer.
+Repository status: types implemented from spec; Geode source not yet wired as consumer. Open gaps below; closed items live in [GAP_ANALYSIS_RESOLVED.md](GAP_ANALYSIS_RESOLVED.md).
 
 ## Goal
 
@@ -69,42 +69,92 @@ All types are exported from `src/root.zig`:
 
 | Test suite | Count | Status |
 |---|---|---|
-| Unit tests (`zig build test`) | 248 | Passing |
+| Unit tests (`zig build test`) | 262 | Passing |
 | Integration tests (`zig build test-integration`) | 9 | Passing |
 | Type-extension tests (`zig build test-extensions`) | 11 | Passing |
 | Performance tests (`zig build test-performance`) | 9 | Passing |
-| Parser-edges tests (`zig build test-parser-edges`) | 16 | Passing (new; Q33) |
-| Fuzz tests (`zig build test-fuzz`) | 10 | Passing (ported to Zig 0.16 Smith API; GAP-0020) |
-| **Total runnable** | **303** | **All passing** |
+| Parser-edges tests (`zig build test-parser-edges`) | 16 | Passing (Q33) |
+| Fuzz tests (`zig build test-fuzz`) | 10 | Passing (Zig 0.16 Smith API; GAP-0020) |
+| **Total runnable** | **317** | **All passing** |
 
-## Gaps (from audit 2026-03-23; refreshed 2026-04-18)
+## Open Gaps (as of 2026-04-18, post-5th-pass)
+
+Open count: **5** (0 Critical, 2 High, 1 Medium, 2 Low). Closed items are in
+[GAP_ANALYSIS_RESOLVED.md](GAP_ANALYSIS_RESOLVED.md). Every remaining item is
+**Blocked on an external dependency** (downstream repo or runner provisioning).
 
 | Gap-ID | Finding | Severity | Status | Category | Issue |
 |--------|---------|----------|--------|----------|-------|
-| GAP-0005 | README Quick Start shows nonexistent `init()` function | High | **Closed** | Docs | — |
-| GAP-0006 | Archive/issue URLs use underscores instead of hyphens | High | **Closed** | Docs | — |
-| GAP-0007 | examples/basic.zig does not import or use the library | Medium | **Closed** | Docs | — |
-| GAP-0008 | docs/README.md links to 5 nonexistent pages | Medium | **Closed** | Docs | — |
-| GAP-0009 | CODEOWNERS contains placeholder @your-username | Low | **Closed** | Quality | — |
-| GAP-0010 | CHANGELOG.md has placeholder release date | Low | **Closed** | Docs | — |
-| GAP-0011 | No code coverage measurement in CI | Medium | **Closed (report-only)** 2026-04-18 — kcov job added (`20b233c`); see `docs/audit/gap-close-blockers.md` for percentage-gate follow-up | CI/CD | [#30](https://gitlab.com/devnw/zig/advanced-types/-/issues/30) |
-| GAP-0012 | AT-TEST-002 cross-feature type-extension tests not ported | Medium | **Closed** | Test | — |
-| GAP-0013 | AT-TEST-003 integration/performance tests not ported | Medium | **Closed** | Test | — |
-| GAP-0014 | Wire Geode to consume types from this package | High | **Blocked** (external dep — Geode repo) | Requirement | — |
-| GAP-0015 | DateRange deferred — blocked on datetime package | Low | **Blocked** (external dep — datetime package) | Feature | — |
-| GAP-0016 | Geographic st_* helpers staged for future release | Low | **Deferred** | Feature | — |
-| GAP-0017 | Port Geode integration tests for type consumption | Medium | **Blocked** (external dep — Geode repo) | Test | — |
-| GAP-0018 | Fuzz suite broken under Zig 0.16 (superseded by GAP-0020) | Critical | **Closed** 2026-04-18 — fuzz suite ported (`c0e07ee`) | Test | [#32](https://gitlab.com/devnw/zig/advanced-types/-/issues/32) |
-| GAP-0019 | AT-NFR-003 — CI is Linux/x86_64 only; refutes README cross-platform claim | Critical | **Partial** 2026-04-18 — YAML jobs added w/ `allow_failure:true` (`505fe43`); dormant pending runner provisioning; see `docs/audit/gap-close-blockers.md` | Compliance | [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) |
-| GAP-0020 | `tests/fuzz.zig` does not compile under Zig 0.16 (`std.testing.fuzz` signature change) | Critical | **Closed** 2026-04-18 — ported to Zig 0.16 Smith API (`c0e07ee`); 10/10 green | Testing | [#24](https://gitlab.com/devnw/zig/advanced-types/-/issues/24) |
-| GAP-0021 | `test-extensions`, `test-performance` not in CI; `test-integration` missing ReleaseSmall | High | **Closed** 2026-04-18 — CI jobs added for test-extensions/test-performance + ReleaseSmall (`a5abd3e`) | CI/CD | [#25](https://gitlab.com/devnw/zig/advanced-types/-/issues/25) |
-| GAP-0022 | Test-count drift: README 230 vs GAP_ANALYSIS 272 vs actual 262 | Low | **Closed** 2026-04-18 — reconciled to 303 across README + all ledgers (`3702dd1`) | Docs | [#27](https://gitlab.com/devnw/zig/advanced-types/-/issues/27) |
+| GAP-0014 | Wire Geode to consume types from this package | High | Blocked (external — Geode repo) | Requirement | [#13](https://gitlab.com/devnw/zig/advanced-types/-/issues/13) |
+| GAP-0015 | DateRange deferred — blocked on datetime package | Low | Blocked (external — datetime package) | Feature | [#8](https://gitlab.com/devnw/zig/advanced-types/-/issues/8) |
+| GAP-0016 | Geographic `st_*` helpers staged for future release | Low | Blocked (feature-scope decision; query layer) | Feature | [#14](https://gitlab.com/devnw/zig/advanced-types/-/issues/14) |
+| GAP-0017 | Port Geode integration tests for type consumption | Medium | Blocked (external — Geode repo; GAP-0014 precedes) | Test | [#16](https://gitlab.com/devnw/zig/advanced-types/-/issues/16) |
+| GAP-0019 | AT-NFR-003 — CI cross-platform runners dormant | High | Blocked (infra — CI matrix jobs scaffolded but `when: manual` until runners provisioned) | CI/CD | [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) |
+
+### GAP-0014: Wire Geode to consume types from this package
+
+- **Issue:** [#13](https://gitlab.com/devnw/zig/advanced-types/-/issues/13)
+- **Category:** Requirement / Feature
+- **Severity:** High
+- **Requirement source:** `docs/audit/gap-requirements.md` AT-PKG-003; project goal stated above.
+- **Current state (evidence):** Library is ready for consumption; no downstream Geode MR references this package. Not actionable inside this repo.
+- **Why this is a gap:** Library's reason-for-being is Geode consumption; downstream wiring is the acceptance criterion for the whole extraction.
+- **Blocker:** External — requires MR in `devnw/zig/geode`. Cannot be closed in this repo.
+- **Unblock steps:** Open an MR in the Geode repo depending on `devnw/zig/advanced-types`, replacing in-tree type copies.
+- **Acceptance criteria:** Geode `build.zig.zon` declares `advanced-types` as a dependency; in-tree duplicates removed.
+
+### GAP-0015: DateRange deferred — blocked on datetime package
+
+- **Issue:** [#8](https://gitlab.com/devnw/zig/advanced-types/-/issues/8)
+- **Category:** Feature
+- **Severity:** Low
+- **Requirement source:** `docs/audit/gap-requirements.md` AT-PKG-002.
+- **Current state (evidence):** `src/types/range.zig` ships `Range(T)` + `IntRange`/`UintRange`/`FloatRange`; `DateRange` intentionally absent. Decision documented above in "Concrete Gaps".
+- **Blocker:** External — no shared Zig datetime package exists yet.
+- **Unblock steps:** When a shared datetime package lands, add `DateRange = Range(<datetime>)` alias plus tests.
+- **Acceptance criteria:** `DateRange` type with tests; documented in public API.
+
+### GAP-0016: Geographic `st_*` helpers staged for future release
+
+- **Issue:** [#14](https://gitlab.com/devnw/zig/advanced-types/-/issues/14)
+- **Category:** Feature
+- **Severity:** Low
+- **Requirement source:** "Intended Boundary" section above.
+- **Current state (evidence):** `src/types/geographic.zig` exports `LatLon`, `LatLonAlt`, `GeoPoint`; `st_*` query helpers explicitly staged for later.
+- **Blocker:** Feature-scope decision — `st_*` helpers are query-layer concerns that belong with a spatial-query package, not in the value-type layer.
+- **Unblock steps:** Add `st_*` helpers in a follow-up release when a query-layer consumer materialises, OR reclassify as Won't-Do.
+- **Acceptance criteria:** `st_*` helpers exposed with tests OR explicit Won't-Do decision.
+
+### GAP-0017: Port Geode integration tests for type consumption
+
+- **Issue:** [#16](https://gitlab.com/devnw/zig/advanced-types/-/issues/16)
+- **Category:** Test
+- **Severity:** Medium
+- **Requirement source:** `docs/audit/gap-requirements.md`.
+- **Current state (evidence):** No Geode-side integration tests exist here; blocked on GAP-0014.
+- **Blocker:** External — waits on GAP-0014.
+- **Unblock steps:** Port integration tests to Geode once GAP-0014 lands.
+- **Acceptance criteria:** Geode CI exercises types from this package end-to-end.
+
+### GAP-0019: AT-NFR-003 — cross-platform CI runners dormant
+
+- **Issue:** [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) (closed on GitLab as infra-blocked)
+- **Category:** CI/CD
+- **Severity:** High
+- **Requirement source:** `docs/audit/gap-requirements.md` AT-NFR-003; README cross-platform claim.
+- **Current state (evidence):** `.gitlab-ci.yml` carries macOS / Windows / aarch64 jobs with `rules: when: manual` and `allow_failure: true` (commits `505fe43`, `aa31b0d`, `7431a67`); SHA-256 verification parity with Linux now in place. No runners provisioned.
+- **Blocker:** Infra — the `company` runner pool does not expose `macos`, `windows`, or `aarch64` tags yet. This is a platform-ops task, not a repository change.
+- **Unblock steps:**
+  1. Register runners tagged `macos`, `windows`, `aarch64` in the group runner pool.
+  2. Verify Zig 0.16.0 install paths per target.
+  3. Remove `rules: when: manual` once green; drop `allow_failure: true` once stable.
+- **Acceptance criteria:** Cross-platform jobs pass on main without `allow_failure`.
 
 ## Related Audit Documents
 
-- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 18 closed, 2 won't-do, 20 ledger-only, 1 accepted
-- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 6 closed, 2 monitor, 10 won't-do
-- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 12 closed, 2 won't-do
+- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 18 closed + 10 closed this pass, 3 accepted, 11 ledger-only
+- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 8 closed (3 Fix, 5 Monitor-verified), 11 won't-do
+- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 17 closed, 4 accepted, 1 won't-do
 
 ## Acceptance Criteria
 

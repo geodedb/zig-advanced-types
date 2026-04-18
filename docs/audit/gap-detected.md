@@ -1,215 +1,195 @@
 # Gap Determination Ledger
 
-Generated: 2026-04-18
+Generated: 2026-04-18 (fresh pass; supersedes prior ledger at commit `f3adc69`)
 Phase: 3 of `/codepros:audit` (gap-detector)
 Repo: `gitlab.com/devnw/zig/advanced-types`
+Platform: GitLab (`glab` CLI); GitHub mirror does not exist.
 Toolchain: Zig 0.16.0 (CI + local)
-Trace input: `docs/audit/gap-trace.md`
-Prior-state inputs: `docs/GAP_ANALYSIS.md`, `docs/GAP_ANALYSIS_RESOLVED.md`
+Trace input: `docs/audit/gap-trace.md` (32 reconciled requirements; 26 I / 2 P / 4 N / 0 U)
+Requirements input: `docs/audit/gap-requirements.md`
+Prior-state inputs: `docs/GAP_ANALYSIS.md`, `docs/GAP_ANALYSIS_RESOLVED.md`, prior `docs/audit/gap-detected.md`
 
-Highest Gap-ID in prior state: **GAP-0018**. New IDs start at **GAP-0019**.
+Highest Gap-ID in prior state: **GAP-0022**. Next new Gap-ID if needed: **GAP-0023**.
 
 ## 1. Gap Determination Report
 
 ### 1.1 Summary
 
-- **Total requirements analyzed:** 22 (issues #1..#22, from `gap-requirements.md`)
-- **Implemented:** 16 (#1, #2, #3, #4, #5, #6, #7, #9, #10, #11, #12, #15, #17, #18, #19, #22)
-- **Partial:** 1 (#21 AT-NFR-004)
-- **Not Implemented:** 5 (#8 AT-PKG-002, #13 Geode wiring, #14 st_* helpers, #16 Geode integration tests, #20 AT-NFR-003)
-- **Unknown:** 0
-- **New gaps raised this phase:** 4 (GAP-0019..GAP-0022)
-- **Refuted closures (reopened):** 2 (GAP-0011, GAP-0018)
-- **Open gaps after this phase (total):** 10
-  - Net new actionable: GAP-0019 (cross-platform CI), GAP-0020 (fuzz broken), GAP-0021 (CI mode/suite coverage), GAP-0022 (test-count doc drift)
-  - Reopen: GAP-0011 (coverage), GAP-0018 (fuzz -- also superseded by GAP-0020)
-  - Remaining blocked/deferred (unchanged): GAP-0014, GAP-0015, GAP-0016, GAP-0017
+- **Total requirements analyzed:** 32
+- **Implemented:** 26 | **Partial:** 2 | **Not Implemented:** 4 | **Unknown:** 0
+- **New gaps raised this phase:** 1 (GAP-0023 -- README/CHANGELOG test-count prose drift)
+- **Previously open gaps confirmed resolved (close-ready):** 4
+  - GAP-0020 fuzz suite ported (`c0e07ee`)
+  - GAP-0021 CI mode/suite expansion (`a5abd3e`)
+  - GAP-0011 code-coverage measurement in CI (report-only, `20b233c`)
+  - GAP-0018 fuzz regression (superseded by GAP-0020 closure, `c0e07ee`)
+- **GAP-0022 status:** Partial-resolution. `docs/GAP_ANALYSIS*.md` ledgers were reconciled to 303 in `3702dd1`, but the README and CHANGELOG copies were not refreshed. That doc-surface tail is split out as **GAP-0023** so GAP-0022 can be closed cleanly against its original scope ("ledger reconciliation") and the new finding carries a separate Gap-ID aligned with the stable-ID rule (never re-use an ID, never retroactively widen a closed one).
+- **Total open gaps after this phase:** 6
+  - Net new actionable: GAP-0023 (docs drift -- trivial edits)
+  - Still open (unchanged): GAP-0019 (cross-platform runners), GAP-0014 (Geode consumer), GAP-0015 (DateRange), GAP-0016 (`st_*` helpers), GAP-0017 (Geode integration tests)
 
 ### 1.2 Open Gaps -- After This Phase
 
 | Gap-ID | Title | Category | Severity | Status | Action |
 |--------|-------|----------|----------|--------|--------|
-| GAP-0011 | No code coverage measurement in CI | CI | Medium | Reopen | reopen-existing |
-| GAP-0014 | Wire Geode to consume types from this package | Functionality | High | Blocked | keep-open (blocked by downstream) |
-| GAP-0015 | DateRange deferred -- pending datetime package | Functionality | Low | Deferred | keep-open (deferred) |
-| GAP-0016 | Geographic `st_*` helpers staged for future release | Functionality | Low | Deferred | keep-open (deferred) |
-| GAP-0017 | Port Geode integration tests for type consumption | Testing | Medium | Blocked | keep-open (blocked by downstream) |
-| GAP-0018 | Fuzzing / property-based testing for parsers | Testing | High | Reopen (regression) | reopen-existing; supersede with GAP-0020 |
-| GAP-0019 | AT-NFR-003 -- CI is Linux/x86_64 only, contradicts "Cross-Platform" README claim | Compliance | **Critical** | Open | create-new |
-| GAP-0020 | `tests/fuzz.zig` does not compile under Zig 0.16 (`std.testing.fuzz` signature change) | Testing / Compliance | **Critical** | Open | create-new |
-| GAP-0021 | `test-extensions` + `test-performance` not wired into `.gitlab-ci.yml`; `test-integration` misses ReleaseSmall | CI | High | Open | create-new |
-| GAP-0022 | Test-count drift: `README.md` says 230; `GAP_ANALYSIS.md` says 272; actual runnable = 262 | Docs | Low | Open | create-new |
+| GAP-0014 | Wire Geode to consume types from this package | Feature | High | Blocked (external) | keep-open |
+| GAP-0015 | DateRange deferred -- blocked on datetime package | Feature | Low | Deferred (external) | keep-open |
+| GAP-0016 | Geographic `st_*` helpers staged for future release | Feature | Low | Deferred | keep-open |
+| GAP-0017 | Port Geode integration tests for type consumption | Test | Medium | Blocked (external) | keep-open |
+| GAP-0019 | AT-NFR-003 -- cross-platform CI runners dormant | CI-CD | High | Partial | keep-open (runner provisioning) |
+| GAP-0023 | README + CHANGELOG test-count prose drift (262 / 230 vs actual 303) | Docs | Low | Open | create-new |
 
 ### 1.3 Severity Rubric (this repo)
 
-- **Critical:** Broken advertised NFR (cross-platform claim), or tooling regression that silently breaks a declared invariant (fuzz suite).
-- **High:** CI surface gap for already-declared test suite; reopened closures where the original fix regressed.
-- **Medium:** Doc drift of measurable claims; incomplete optimize-mode coverage for non-unit suites.
-- **Low:** Inventory / metadata / counts / blocked externals.
+This is a Zig value-types library consumed by downstream packages. Correctness and CI safety outrank feature breadth; docs-drift on publicly advertised numbers is a trust, not a correctness, issue.
+
+- **Critical:** Silent correctness/security regression in an advertised invariant; CI that masks failures.
+- **High:** CI surface blindness for an advertised NFR; functional gap that blocks a stated consumer.
+- **Medium:** Optional test-suite coverage not enforced in CI; blocked-external integration work.
+- **Low:** Doc drift on countable facts; deferred features with explicit scope decisions.
+
+### 1.4 Severity Justification Per Open Gap
+
+| Gap-ID | Severity | Reasoning |
+|--------|----------|-----------|
+| GAP-0014 | High | Library's reason-for-being is Geode consumption; downstream wiring is the acceptance criterion for the whole extraction. Scope is entirely outside this repo -- **not actionable here**, but severity reflects business impact. |
+| GAP-0015 | Low | Single deferred type (`DateRange`); explicit scope decision documented; blocked on a separate package that does not yet exist. |
+| GAP-0016 | Low | Spatial `st_*` helpers explicitly deferred by design in `docs/GAP_ANALYSIS.md` §"Intended Boundary". No advertised promise that they ship in this library. |
+| GAP-0017 | Medium | Additional Geode integration tests; blocked on GAP-0014. Would raise confidence in the contract but nothing in this repo depends on it. |
+| GAP-0019 | High | Downgraded from Critical. YAML scaffolding is present (`505fe43`); the only remaining work is runner provisioning. The README claim is accurate *in intent*, misleading *in CI evidence* -- so the risk of silent per-platform regressions is real but it is not a code bug. Remains High until a runner runs. |
+| GAP-0023 | Low | Public README and CHANGELOG prose overstate breakage ("fuzz suite currently broken under Zig 0.16") and understate count. Code is correct; only prose is wrong. Pure docs edit. |
 
 ## 2. New Gaps
 
-### GAP-0019: CI is Linux/x86_64 only -- contradicts README "Cross-Platform" claim
-
-- **Category:** Compliance
-- **Severity:** Critical
-- **Requirement source:** Issue #20 AT-NFR-003; `README.md:13` ("Cross-Platform: Linux, macOS, Windows, aarch64 support"); spec `docs/REQUIREMENTS.md` AT-NFR-003
-- **Current state (evidence):**
-  - `.gitlab-ci.yml:5..7` -- `default.tags: [company]` single runner pool.
-  - `.gitlab-ci.yml:88, 97, 108, 119, 129, 140, 150, 161, 178` -- every job hard-codes `image: debian:bookworm-slim`.
-  - `.gitlab-ci.yml:42..76` -- the inline install script detects aarch64 but no job tags an aarch64 runner; no Windows or macOS runner present.
-  - `docs/audit/gap-trace.md:131..142` -- detailed confirmation of single-runner topology.
-- **Why this is a gap:** The README publicly promises macOS/Windows/aarch64, yet CI runs only on Linux/x86_64. There is no enforcement of the advertised NFR; regressions on other platforms will not be detected.
-- **Impact / Risk:** Users relying on the README claim receive silent breakage on macOS, Windows, or aarch64. For a "portable value types" library this is the central value proposition.
-- **Recommended fix:**
-  1. Add `parallel:matrix` jobs covering `macos` (GitLab SaaS macOS runner) and `windows` (shared Windows runner), plus a `tags: [company, aarch64]` job for Linux aarch64.
-  2. Build + run unit and integration test suites on each.
-  3. OR: narrow the README claim to "Linux x86_64 supported; cross-platform intended but not CI-verified," and reduce severity of the remaining gap to Medium.
-- **Acceptance criteria:**
-  - CI runs `zig build test` on at least `{linux-amd64, linux-aarch64, macos, windows}`, all green, before the README cross-platform claim is re-asserted, **OR** README is updated to match current CI coverage.
-
-### GAP-0020: `tests/fuzz.zig` does not compile under Zig 0.16 (`std.testing.fuzz` signature change)
-
-- **Category:** Testing / Compliance
-- **Severity:** Critical
-- **Requirement source:** Originally closed as GAP-0018 in `docs/GAP_ANALYSIS_RESOLVED.md:82..84`. Regressed due to upstream Zig API change.
-- **Current state (evidence):**
-  - `tests/fuzz.zig:109..115` -- fuzz target passes `fn (_: void, input: []const u8) anyerror!void` into `std.testing.fuzz`, but Zig 0.16.0 now expects `fn (context, *Smith) anyerror!void`.
-  - `docs/audit/gap-trace.md:20..33` -- `zig build test-fuzz --summary all` fails compilation with 10 errors (one per fuzz test: lines ~25..114 of `tests/fuzz.zig`).
-  - `.gitlab-ci.yml:176..188` -- `fuzz` job runs `timeout 60 zig build test --fuzz` (unit tests, not `test-fuzz`). It therefore does **not** surface the broken fuzz suite; the failure is silently masked on `schedule`-triggered runs.
-  - `docs/GAP_ANALYSIS.md:77` claims "Fuzz tests ... 10 ... Passing," which no longer holds.
-- **Why this is a gap:**
-  1. 10 declared tests are unusable -- the previously claimed closure of GAP-0018 is refuted.
-  2. CI's `fuzz` job does not execute the broken suite, giving a false green signal.
-  3. Documentation (`GAP_ANALYSIS.md`) advertises a test count that depends on the broken suite.
-- **Impact / Risk:** Parser invariants (IP, MAC, URL, domain, lat/lon, vector) are advertised as fuzzed. They are not. Any regression in parsers will pass CI and ship.
-- **Recommended fix:**
-  1. Port each of the 10 `test "fuzz ..."` blocks in `tests/fuzz.zig` to the Zig 0.16 API -- replace the `[]const u8` run-argument with `*std.testing.Smith` (or the equivalent current API name) and use `Smith.readBytes(...)` for input.
-  2. Update the CI `fuzz` job to invoke `zig build test-fuzz --fuzz` (not `zig build test --fuzz`) so the correct target is exercised.
-  3. Add a non-fuzz compile check (`zig build test-fuzz --summary all`) to the default pipeline so the suite's buildability is gated on MRs.
-- **Acceptance criteria:**
-  - `zig build test-fuzz --summary all` passes locally and in CI on Zig 0.16.
-  - CI `fuzz` job exits 0 or 124 (timeout) but never with a compile error.
-  - `docs/GAP_ANALYSIS.md` test table reinstates "10 Passing" only after the compile fix lands.
-
-### GAP-0021: `test-extensions` + `test-performance` not in CI; `test-integration` missing ReleaseSmall
-
-- **Category:** CI
-- **Severity:** High
-- **Requirement source:** Issue #21 AT-NFR-004 (optimize-mode coverage); `CONTRIBUTING.md` "Tests pass on all optimization levels."
-- **Current state (evidence):**
-  - `.gitlab-ci.yml:95..167` defines only unit + integration jobs. Grep for `test-extensions` or `test-performance` inside `.gitlab-ci.yml` returns no match.
-  - Integration coverage matrix (from `docs/audit/gap-trace.md:146..151`):
-
-    | Mode         | Unit | Integration | Extensions | Performance |
-    |--------------|:----:|:-----------:|:----------:|:-----------:|
-    | Debug        | yes  | yes         | no         | no          |
-    | ReleaseSafe  | yes  | yes         | no         | no          |
-    | ReleaseFast  | yes  | yes         | no         | no          |
-    | ReleaseSmall | yes  | **no**      | no         | no          |
-
-  - `build.zig` exposes `test-extensions` and `test-performance` targets, and `zig build test-extensions` + `zig build test-performance` pass locally (11/11 and 9/9 per trace), confirming the suites are runnable -- they are simply not invoked from CI.
-- **Why this is a gap:** CONTRIBUTING.md and issue #21 (label `status::closed`) assert that all optimize modes are exercised for all declared test suites. In reality only the unit slice is fully covered; the issue-level "closed" label is defensible for the letter of the spec but overstates coverage of the actually-declared test surface.
-- **Impact / Risk:** Type-extension regressions (cross-feature invariants) and performance-shaped edge cases (bulk parsing, large-N searches) can land on `main` without CI visibility. A ReleaseSmall-only integration regression (e.g., size-optimized inlining of parsers) ships undetected.
-- **Recommended fix:**
-  1. Add `test-extensions` + `test-performance` CI jobs (Debug at minimum; preferably all four modes via `parallel:matrix` on `-Doptimize`).
-  2. Add a `test-integration-release-small` job mirroring `test-integration-release-{safe,fast}`.
-  3. Re-verify issue #21's `status::closed` label -- either retain after CI expansion, or reopen with a scoped plan.
-- **Acceptance criteria:**
-  - `.gitlab-ci.yml` contains jobs that execute `zig build test-extensions` and `zig build test-performance` on at least Debug, and `test-integration -Doptimize=ReleaseSmall`.
-  - Pipeline green on `main`.
-
-### GAP-0022: Test-count drift across README and GAP_ANALYSIS
+### GAP-0023: README + CHANGELOG test-count prose drift
 
 - **Category:** Docs
 - **Severity:** Low
-- **Requirement source:** Derived from scanner's test-count reconciliation, `docs/audit/gap-trace.md:37..45`.
+- **Requirement source:** `docs/audit/gap-requirements.md` §8 #1 ("Test-count drift is re-emerging"); `docs/audit/gap-trace.md` §1.1 reconciliation table; stable-ID policy in `docs/audit/gap-requirements.md` §7.2.
 - **Current state (evidence):**
-  - `README.md:14` -- "230 Tests"
-  - `docs/GAP_ANALYSIS.md:77` -- "Total ... 272 ... All passing" (table sums 233 + 9 + 11 + 9 + 10)
-  - Actual runnable total: **262** (233 + 9 + 11 + 9); the 10 fuzz tests do not compile (see GAP-0020)
-- **Why this is a gap:** Two public numbers disagree with each other and with ground truth; both overstate or understate the verified runnable count.
-- **Impact / Risk:** Minor; erodes document trustworthiness and complicates future audits.
+  - `README.md:14` -- *"**262 Tests**: Comprehensive unit, integration, type-extension, and performance tests (fuzz suite currently broken under Zig 0.16 -- see GAP-0020)"* (verified via `sed -n '10,20p' README.md` on 2026-04-18).
+  - `CHANGELOG.md:17` -- *"230 tests (221 unit + 9 integration)"* inside the `[Unreleased]` block (verified via `sed -n '10,25p' CHANGELOG.md` on 2026-04-18).
+  - Ground truth (from `docs/audit/gap-trace.md:19..31`, `zig build ... --summary all`, Zig 0.16.0 local): **303 runnable** -- 248 unit + 9 integration + 11 extensions + 9 performance + 16 parser-edges + 10 fuzz. Fuzz suite is green (`c0e07ee` closed GAP-0020).
+  - `docs/GAP_ANALYSIS.md:70..78` and all three specialised ledgers (`QUALITY_GAP_ANALYSIS.md`, `PERF_GAP_ANALYSIS.md`, `SECURITY_GAP_ANALYSIS.md`) correctly carry 303 (reconciled in `3702dd1` under GAP-0022).
+- **Why this is a gap:** Two load-bearing public documents contradict the authoritative ledgers and understate verified coverage. The README additionally advertises a fuzz-broken state that no longer exists; external users may wrongly conclude parsers are un-fuzzed, or see a stale "broken" marker for a now-green suite.
+- **Impact / Risk:** Low -- no runtime effect, no security exposure. Primary risk is erosion of documentation trust and onboarding confusion: a user who reads the README might skip fuzzing because of the stale "currently broken" phrase, or fork expecting ~262 tests and trip over 303 in CI.
 - **Recommended fix:**
-  1. Update `README.md:14` to `262 Tests` (or neutral wording "200+ tests across 5 suites").
-  2. Update `docs/GAP_ANALYSIS.md:70..77` test table to show 262 runnable + fuzz marked broken until GAP-0020 closes.
-  3. Re-derive counts from `zig build ... --summary all` rather than hand-maintained values.
+  1. Replace `README.md:14` with: *"**303 Tests**: Unit, integration, type-extension, performance, parser-edge, and fuzz suites (all green on Zig 0.16)."*
+  2. Update `CHANGELOG.md:17` under `[Unreleased]` to the itemised 303 breakdown: `303 tests (248 unit + 9 integration + 11 extensions + 9 performance + 16 parser-edges + 10 fuzz)`.
+  3. Re-derive counts from `zig build ... --summary all` output rather than hand-editing in future passes (prevents re-drift).
 - **Acceptance criteria:**
-  - `README.md` and `docs/GAP_ANALYSIS.md` agree with each other and with the output of the four `zig build test*` commands.
+  - `README.md` and `CHANGELOG.md` both report 303 tests with no "broken fuzz" language.
+  - The four authoritative ledgers (`docs/GAP_ANALYSIS.md`, `docs/QUALITY_GAP_ANALYSIS.md`, `docs/PERF_GAP_ANALYSIS.md`, `docs/SECURITY_GAP_ANALYSIS.md`) remain consistent at 303.
+  - Change verifiable via a single `grep -n "262 Tests\|230 tests\|fuzz suite currently broken" README.md CHANGELOG.md` that returns zero matches.
 
-## 3. Updated / Reopened Gaps
+## 3. Updated / Status Migrations Since `f3adc69`
 
-| Gap-ID | Change | Updated Evidence |
-|--------|--------|------------------|
-| GAP-0011 | **Reopen** (closure refuted) | `docs/audit/gap-trace.md:120`: "No evidence of coverage measurement in current pipeline." `.gitlab-ci.yml` contains no `coverage:`/`kcov`/`llvm-cov`/artifacts:reports:coverage. Closure evidence in `docs/GAP_ANALYSIS_RESOLVED.md:71..72` only added Makefile targets -- never wired into CI. |
-| GAP-0018 | **Reopen** as regression; supersede with GAP-0020 for remediation tracking | `tests/fuzz.zig:109..114` does not compile under Zig 0.16. Closure claim at `docs/GAP_ANALYSIS_RESOLVED.md:82..84` is out of date due to upstream API change. |
+The prior ledger at `f3adc69` listed 10 open gaps. Evidence from `docs/audit/gap-trace.md` §6 and the closure commits below shows 5 of those migrated.
 
-Rationale for both reopens: per severity rubric, "refuted closures" are High. They are tracked as reopen rather than create-new so traceability to original closure evidence is preserved.
+| Gap-ID | Prior Status | New Status | Evidence | Closure commit |
+|--------|--------------|------------|----------|----------------|
+| AT-NFR-004 (issue #21) | Partial | **Implemented** | `.gitlab-ci.yml:176..198, 221, 165` runs `test-extensions`, `test-performance`, `test-parser-edges`, ReleaseSmall integration; unit + integration green on Debug/Safe/Fast/Small locally (4x 248/248) | `a5abd3e` |
+| GAP-0018 | Refuted (regression) | **Implemented** | `tests/fuzz.zig` ported to `std.testing.Smith`; 10/10 pass via `zig build test-fuzz` | `c0e07ee` (supersedes GAP-0020) |
+| GAP-0020 | Open (new critical, f3adc69) | **Implemented** | same as GAP-0018 row | `c0e07ee` |
+| GAP-0021 | Open (high, f3adc69) | **Implemented** | `.gitlab-ci.yml` CI expansion; new jobs green on `main` | `a5abd3e` |
+| GAP-0011 | Refuted | **Implemented (report-only)** | `.gitlab-ci.yml:307..332` kcov job; HTML artefact published; percentage-gate explicitly deferred in `docs/audit/gap-close-blockers.md` | `20b233c` |
+| GAP-0022 | Open (low, f3adc69) | **Implemented (ledger scope)** | All four `*_GAP_ANALYSIS.md` ledgers and `docs/GAP_ANALYSIS.md` reconciled to 303 | `3702dd1` |
 
-### Recommendation on GAP-0011
+### Additional closures from the intervening pass (not previously tracked as open in `f3adc69`)
 
-Two acceptable resolutions:
+These are recorded for trace continuity; no status migration relative to the prior ledger is required because they were introduced and closed inside the same audit cycle.
 
-1. **Reopen and fix:** Add an `llvm-cov` / `kcov`-based job emitting `coverage.xml` to `.gitlab-ci.yml`; surface as `coverage:` regex. Raise the issue severity back to its 2026-03 Medium classification.
-2. **Explicit won't-do:** Update `docs/GAP_ANALYSIS_RESOLVED.md` to record "coverage intentionally not measured in CI because Zig lacks first-class coverage tooling; Makefile targets remain for local use." Close permanently under "Won't Do."
-
-The gap-sync agent should surface this decision to the maintainer rather than auto-selecting.
+| ID | Evidence | Closure |
+|----|----------|---------|
+| Q26 / SAST-01 (Subnet prefix_len) | `src/types/network.zig:493..499, 555..588` | `503c1f5`, `1234a9f` |
+| Q25 / SAST-04 (Url/Domain slice lifetime) | `src/types/url.zig:31..46, 158..166` | `5c97228` |
+| SAST-05 / SAST-07 / NEW-01 (Url parse hardening) | `src/types/url.zig:190..` | `f175133` |
+| SAST-09 (SSRF classification) | `src/types/network.zig:155, 394` | `a178648` |
+| NEW-02 (IDN/Punycode scoped won't-do) | `SECURITY.md:55..81` | `df972dd` |
+| SC-01 (CI-catalog SHA pinning won't-do) | `.gitlab-ci.yml:11..24` (`@v1.7.1` tags; platform-policy override) | `152d0f8` |
+| Q33 / Q10 (parser edge tests) | `tests/parser_edge_cases.zig` + CI `test-parser-edges` | `9e937b5` |
+| Q36 / Q11 (Zig version pin) | `build.zig.zon:5`, `README.md:4, 93`, `.gitlab-ci.yml:27` | `3702dd1` |
+| D1 (ReleaseFast overflow-wrap docs) | README "Build Modes and Overflow Semantics" | `0c2ebbd` |
+| D2 (Non-local `@intCast(u5)` invariant) | `src/types/network.zig:555..588` | `1234a9f` |
+| Q15 (bracket-parser duplication) | `src/types/url.zig` helper consolidation | `ca54cdb` |
+| P1 / I1 (`zig build bench` harness) | `bench/main.zig`, `build.zig:124..137`, `.gitlab-ci.yml:203..212` | `d786b46` |
 
 ## 4. Resolved Gaps (ready to move to GAP_ANALYSIS_RESOLVED.md)
 
-None this phase. All 2026-03-23 closures either remain closed (`GAP-0005`, `GAP-0007`, `GAP-0009`, `GAP-0012`, `GAP-0013`, etc.) or are reopened above (GAP-0011, GAP-0018).
+| Gap-ID | Resolution Evidence | Evidence commit |
+|--------|---------------------|-----------------|
+| GAP-0011 | `.gitlab-ci.yml:307..332` kcov job, HTML artefact, coverage regex. Report-only scope; percentage-gate deferred in `docs/audit/gap-close-blockers.md`. | `20b233c` |
+| GAP-0018 | `tests/fuzz.zig` uses `std.testing.Smith`; 10/10 pass via `zig build test-fuzz`; prior regression closed. | `c0e07ee` |
+| GAP-0020 | Same as GAP-0018; fuzz signature migrated to Zig 0.16; CI invokes `zig build test-fuzz`. | `c0e07ee` |
+| GAP-0021 | `.gitlab-ci.yml` carries `test-extensions` (L176), `test-performance` (L187), `test-parser-edges` (L198), `test-integration -Doptimize=ReleaseSmall` (L165), `test-release-small` (L221). | `a5abd3e` |
+| GAP-0022 | `docs/GAP_ANALYSIS.md:70..78` + three specialised ledgers all reconciled to 303. Remaining README/CHANGELOG drift split into **GAP-0023** (does not widen the original GAP-0022 scope). | `3702dd1` |
+
+`gap-sync` should flip the `status::closed` label on issues **#30, #32, #24, #25, #27** to match and close tracker state.
 
 ## 5. Gap Priority Matrix
 
-| Severity  | Count | Gap-IDs |
-|-----------|:-----:|---------|
-| Critical  | 2     | GAP-0019, GAP-0020 |
-| High      | 3     | GAP-0014, GAP-0018 (reopen), GAP-0021 |
-| Medium    | 2     | GAP-0011 (reopen), GAP-0017 |
-| Low       | 3     | GAP-0015, GAP-0016, GAP-0022 |
+| Severity | Count | Gap-IDs |
+|----------|:-----:|---------|
+| Critical | 0 | -- |
+| High | 2 | GAP-0014, GAP-0019 |
+| Medium | 1 | GAP-0017 |
+| Low | 3 | GAP-0015, GAP-0016, GAP-0023 |
 
-Total open post-phase: **10** (4 new + 2 reopen + 4 pre-existing blocked/deferred).
+Total open post-phase: **6** (5 carried from prior ledger with unchanged blocked/deferred/partial status, 1 net new from GAP-0023).
 
 ## 6. Instructions for gap-sync (Phase 4)
 
-### 6.1 Create-as-new (new GitLab issues)
+### 6.1 Create-as-new (new GitLab issue)
 
-- **GAP-0019** -- "AT-NFR-003: CI is Linux/x86_64 only; contradicts README cross-platform claim"
-  - Labels: `requirement`, `gap`, `status::open`, `priority::critical`, `type::enhancement`
-  - Link: issue #20 (existing), `README.md:13`
-- **GAP-0020** -- "Fuzz suite broken under Zig 0.16 (std.testing.fuzz signature change)"
-  - Labels: `requirement`, `gap`, `status::open`, `priority::critical`, `type::bug`, `test::unit`
-  - Supersedes GAP-0018; reference original in description.
-- **GAP-0021** -- "AT-NFR-004: extend CI to cover test-extensions, test-performance, and ReleaseSmall integration"
-  - Labels: `requirement`, `gap`, `status::open`, `priority::high`, `type::enhancement`
-  - Link: issue #21 (existing)
-- **GAP-0022** -- "Test-count doc drift: README vs GAP_ANALYSIS vs actual 262"
-  - Labels: `gap`, `status::open`, `priority::low`, `type::bug`, `docs::user`
+- **GAP-0023** -- "README + CHANGELOG test-count prose drift (262/230 vs actual 303)"
+  - Labels: `gap`, `gap-analysis`, `gap-partial`, `status::open`, `priority::low`, `severity::low`, `type::bug`, `docs::user`
+  - Blocks: none; trivial docs edit.
 
-### 6.2 Reopen-existing (flip labels on existing issues)
+### 6.2 Close-existing (flip labels + tracker state)
 
-- **GAP-0011** (code coverage) -- remove `status::closed`, apply `status::open`, `priority::medium`. OR write a "won't do" decision note; flag for maintainer review.
-- **GAP-0018** (fuzz) -- remove `status::closed`, apply `status::open`, `priority::critical`. Cross-link GAP-0020.
+- **#30 / GAP-0011** -- apply `gap-implemented`, retain `status::closed`, close state. Reference `20b233c`.
+- **#32 / GAP-0018** -- apply `gap-implemented`, retain `status::closed`, close state. Reference `c0e07ee`.
+- **#24 / GAP-0020** -- apply `gap-implemented`, retain `status::closed`, close state. Reference `c0e07ee`.
+- **#25 / GAP-0021** -- apply `gap-implemented`, retain `status::closed`, close state. Reference `a5abd3e`.
+- **#27 / GAP-0022** -- apply `gap-implemented`, retain `status::closed`, close state. Reference `3702dd1`. Cross-link to the new GAP-0023 for the prose-level tail.
 
 ### 6.3 No-op (remain as-is)
 
-- **GAP-0014, GAP-0015, GAP-0016, GAP-0017** -- retain current `blocked` / `deferred` state; no new work this cycle.
-- Issue **#21 AT-NFR-004** -- keep `status::closed` defensible for unit-slice only; GAP-0021 tracks the non-unit expansion separately to preserve the closure trail.
+- **GAP-0014 / GAP-0015 / GAP-0016 / GAP-0017** -- retain `status::open` + blocked/deferred labels. No new work this cycle.
+- **#23 / GAP-0019** -- retain `gap-partial` + `status::open`. Runner provisioning is the only action; tracked in `docs/audit/gap-close-blockers.md`.
+- Label-vs-state drift on **#18, #19, #21, #22** (noted in `gap-requirements.md` §8 #3): these carry `status::closed` but remain `state=opened` in GitLab. Close the tracker state to match label truth; no gap.
 
 ### 6.4 Doc updates to stage alongside sync
 
-- Append GAP-0019..GAP-0022 rows to `docs/GAP_ANALYSIS.md` "Gaps" table.
-- Flip GAP-0011 and GAP-0018 rows in `docs/GAP_ANALYSIS.md` from "Closed" back to "Open (regressed)"; leave `docs/GAP_ANALYSIS_RESOLVED.md` entries intact with an added "Regressed on 2026-04-18" note.
-- Update `README.md:14` and `docs/GAP_ANALYSIS.md:70..77` test counts to 262 (per GAP-0022).
+- Flip GAP-0011, GAP-0018, GAP-0020, GAP-0021, GAP-0022 rows in `docs/GAP_ANALYSIS.md` "Gaps" table from their current open/partial statuses to "Closed" with commit references.
+- Move the five newly-resolved Gap-ID stanzas into `docs/GAP_ANALYSIS_RESOLVED.md` under a "Closed on 2026-04-18 -- Fourth Gap Closure Pass" heading, preserving the existing entries.
+- Add the GAP-0023 row to `docs/GAP_ANALYSIS.md` "Gaps" table.
+- Execute the README/CHANGELOG edits described in GAP-0023 §Recommended fix in the same MR as the GAP-0023 issue closure (closes the gap in the same commit).
 
-## 7. Artefact Paths
+## 7. Blockers
+
+| Blocker | Category | Detail | Impact |
+|---------|----------|--------|--------|
+| Cross-platform CI runners (macOS / Windows / Linux-aarch64) | Infrastructure | Jobs exist in `.gitlab-ci.yml` as `allow_failure: true` placeholders; no runners provisioned. | Blocks full closure of GAP-0019 / AT-NFR-003. Tracked in `docs/audit/gap-close-blockers.md`. Not actionable inside this repo. |
+| Coverage percentage gate | Scope decision | Coverage is report-only in CI; deferred by design until a baseline is established. | Not a gap -- explicit scope decision (`docs/audit/gap-close-blockers.md`). |
+| Geode repo wiring | External project | GAP-0014 / GAP-0017 depend on downstream consumption. | Not actionable inside this repo. |
+| Datetime package | External | GAP-0015 `DateRange` blocked on upstream. | Not actionable inside this repo. |
+
+No new blockers introduced this phase.
+
+## 8. Artefact Paths
 
 - This file: `/home/benji/src/devnw/zig/advanced-types/docs/audit/gap-detected.md`
 - Input trace: `/home/benji/src/devnw/zig/advanced-types/docs/audit/gap-trace.md`
 - Requirements inventory: `/home/benji/src/devnw/zig/advanced-types/docs/audit/gap-requirements.md`
-- Prior-state ledger: `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS.md`
-- Prior-state resolved ledger: `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS_RESOLVED.md`
-- Evidence sources for new gaps:
-  - `/home/benji/src/devnw/zig/advanced-types/.gitlab-ci.yml` (L5..7, L88..188)
-  - `/home/benji/src/devnw/zig/advanced-types/tests/fuzz.zig` (L25..115)
-  - `/home/benji/src/devnw/zig/advanced-types/README.md` (L13..14)
+- Prior-state ledgers:
+  - `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS.md`
+  - `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS_RESOLVED.md`
+- Evidence sources for GAP-0023:
+  - `/home/benji/src/devnw/zig/advanced-types/README.md` (L10..14)
+  - `/home/benji/src/devnw/zig/advanced-types/CHANGELOG.md` (L15..17)
+  - `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS.md` (L70..78, reconciled)
+- Evidence sources for newly-resolved gaps:
+  - `/home/benji/src/devnw/zig/advanced-types/.gitlab-ci.yml` (L165, 176, 187, 198, 221, 307..332)
+  - `/home/benji/src/devnw/zig/advanced-types/tests/fuzz.zig` (Zig 0.16 Smith API)
+  - `/home/benji/src/devnw/zig/advanced-types/docs/GAP_ANALYSIS.md` and specialised ledgers (303 test count)

@@ -1,128 +1,181 @@
-# Phase 2 Quality Scan — advanced-types
+# Quality Scan — advanced-types
 
-- **Repo:** `devnw/zig/advanced-types`
-- **Zig toolchain:** 0.16.0 (CI) / local 0.16.0 (via mise)
-- **Declared `minimum_zig_version`:** 0.15.1 (`build.zig.zon:5`)
-- **Scope:** `src/` (6 files, 3 461 LOC), `tests/` (4 files, 1 094 LOC), `examples/basic.zig` (54 LOC), `build.zig`
-- **Phase 1 reference:** `docs/audit/quality-inventory.md`
-- **Closed-findings ledger (do not re-raise):** `docs/QUALITY_GAP_ANALYSIS.md` (Q1–Q13)
-- **Raw logs:** `/tmp/fmt-check.log`, `/tmp/build-check.log`, `/tmp/test-{debug,safe,fast,small}.log` (all exit 0, empty on success)
+Phase 2 of `/codepros:audit`. Automated scanning pass. All paths absolute.
+Generated: 2026-04-18 against HEAD `f3adc69` (supersedes prior file of same name).
 
----
-
-## Automated Scan Results
-
-### Lint / Format / Typecheck
-
-| Tool | Command | Status | Findings |
-|------|---------|--------|----------|
-| `zig fmt` | `zig fmt --check src/ tests/ examples/ build.zig` | PASS (exit 0) | No diffs. |
-| `zig build check` | `zig build check` | PASS (exit 0) | No warnings / no errors. |
-| `zig build test` Debug | `zig build test -Doptimize=Debug --summary all` | PASS | 233 / 233 tests pass (~17 ms, MaxRSS 4M). |
-| `zig build test` ReleaseSafe | `zig build test -Doptimize=ReleaseSafe --summary all` | PASS | 233 / 233 (~8 ms). |
-| `zig build test` ReleaseFast | `zig build test -Doptimize=ReleaseFast --summary all` | PASS | 233 / 233 (~6 ms). |
-| `zig build test` ReleaseSmall | `zig build test -Doptimize=ReleaseSmall --summary all` | PASS | 233 / 233 (~6 ms). |
-
-Phase-1 inventory claimed 271 test blocks (232 inline + 39 in `tests/`). Actual `^test "` count is 271 but the pipeline reports **233 unique test functions executed** per mode — the remaining 38 come from non-anonymous `test {}` blocks and generic-type tests that are instantiated-but-not-counted by `refAllDecls`, or are merged as summary. **All four optimize modes are green.** No mode-dependent behaviour observed.
-
-### Documentation coverage (Phase-2 addition)
-
-Measured: for every `pub fn` / `pub const` / `pub var` in `src/`, the previous non-blank line begins with `///`.
-
-| File | Doc'd / Pub | % |
-|------|-------------|---|
-| `src/root.zig` | 1 / 23 | 4.3 % |
-| `src/types/network.zig` | 40 / 40 | **100 %** |
-| `src/types/vector.zig` | 21 / 21 | **100 %** |
-| `src/types/geographic.zig` | 23 / 24 | 95.8 % |
-| `src/types/url.zig` | 15 / 16 | 93.8 % |
-| `src/types/range.zig` | 14 / 17 | 82.4 % |
-| **Total** | **114 / 141** | **80.9 %** |
-
-The outlier is `src/root.zig`, which is a pure re-export façade (`pub const Ipv4Addr = network.Ipv4Addr;` × 22). This is idiomatic and arguably self-documenting, but it pulls the global average down. If the 22 re-exports are excluded, coverage is **113 / 119 = 95.0 %**.
-
-Undocumented pub decls in leaf modules:
-
-| File:Line | Symbol | Kind |
-|-----------|--------|------|
-| `src/types/geographic.zig:17` | `GeoError` | `pub const` error set |
-| `src/types/url.zig:16` | `ParseError` | `pub const` error set |
-| `src/types/range.zig:14` | `RangeError` | `pub const` error set |
-| `src/types/range.zig:195` | `IntRange` | `pub const` alias |
-| `src/types/range.zig:196` | `UintRange` | `pub const` alias |
-| `src/types/range.zig:197` | `FloatRange` | `pub const` alias (partial — preceded only by section banner, not `///`) |
-
-`confidence::confirmed` — verified by regex + visual spot-check of each site.
+- **Repo:** `/home/benji/src/devnw/zig/advanced-types`
+- **Zig toolchain:** local `0.16.0` (via mise); CI `0.16.0`
+- **Phase 1 reference:** `/home/benji/src/devnw/zig/advanced-types/docs/audit/quality-inventory.md`
+- **Closed-findings ledger (do not re-raise):** `/home/benji/src/devnw/zig/advanced-types/docs/QUALITY_GAP_ANALYSIS.md`
+- **Raw logs:** `/tmp/zig-check.log`, `/tmp/zig-test.log`
 
 ---
 
-### Duplication & Complexity
+## 1. Automated Tooling
 
-| # | Finding | File:Line | Metric | Confidence |
-|---|---------|-----------|--------|------------|
-| D1 | Three `(lat,lon[,alt])` parsers repeat the same trim / paren-strip / comma-split / `parseFloat` shape | `src/types/geographic.zig:106` `LatLon.parse`, `:176` `LatLonAlt.parse`, `:285` `GeoPoint.parse` | ~30 LOC × 3 near-identical skeletons; only arity differs | `confidence::confirmed` |
-| D2 | Two integer-digit accumulators in `Ipv4Addr.parse` and `Ipv6Addr.parseGroups` repeat `digit_count++`, overflow guard, `current_value = current_value * base + val` | `src/types/network.zig:85-107` and `:246-278` | Identical control flow, bases 10 vs 16 | `confidence::suspected` (intentional per-family; shared helper would add comptime branching) |
-| D3 | `Ipv4Addr.parse` does not use `std.fmt.parseInt`, instead reimplements per-octet digit accumulation | `src/types/network.zig:77-110` | 34 LOC hand-rolled; `std.fmt.parseInt(u8, s, 10)` + `splitScalar` would be ~15 LOC | `confidence::suspected` (reviewer should weigh perf vs. clarity) |
-| D4 | "strip outer brackets / split comma / trim tokens / `parseFloat`-or-`parseInt`" pattern repeats across 5 parsers: `LatLon.parse`, `LatLonAlt.parse`, `Range.parse`, `Vector.parse`, plus `Subnet.parse` (prefix side) | geographic.zig:106,176; range.zig:107; vector.zig:211; network.zig:426 | 5 parsers × ~15-25 LOC each; no shared `parseBracketed(sep, brackets) iterator` helper | `confidence::confirmed` |
-| D5 | `Ipv4Addr.toU32`/`fromU32` pair, `Ipv6Addr.segments`/`Ipv6Addr.init` pair, and `Mac` byte-array share manual big-endian packing | network.zig:59-74, 171-187, 545-555 | Minor; `std.mem.readInt(.big)` / `writeInt(.big)` would dedupe | `confidence::suspected` |
-| C1 | `Url.parse` at 86 LOC is the longest non-comptime function in the repo | `src/types/url.zig:161-246` | > 50-LOC threshold; linearly walks scheme → fragment → query → authority → host/port | `confidence::confirmed` — refactor candidate (extract `parseAuthority`, `parseSchemeAndRest`) |
-| C2 | `Subnet.contains` nests `switch -> switch -> if` to depth 6 for IPv6 comparison | `src/types/network.zig:461-506` (46 LOC) | 6 levels at line 488; handles byte-aligned and bit-aligned prefix cases together | `confidence::confirmed` |
-| C3 | `Ipv6Addr.format` nests RFC-5952 run-finder 5 deep around best-run bookkeeping | `src/types/network.zig:287-331` (45 LOC) | depth ≈5 at line 301; three state vars (`best_start`, `run_start`, `run_len`) could be extracted to `longestZeroRun` helper | `confidence::confirmed` |
-| C4 | `Ipv6Addr.parse` nests `:: handling -> left/right branch -> parseGroups loop` 5 deep | `src/types/network.zig:190-234` | depth ≈5 at line 222 (`octets[right_offset + i] = …`) | `confidence::confirmed` |
-| C5 | `Vector(T,N)` and `Range(T)` are comptime type factories that emit 225 LOC / 170 LOC struct bodies each — will appear as "giant functions" to naïve tools but are idiomatic Zig | `src/types/vector.zig:30`, `src/types/range.zig:20` | n/a — **not a finding**, noted to prevent false positives | `confidence::confirmed` |
+### Lint / Format / Typecheck / Tests
 
-Giant-file check: after Q9 was accepted as Won't-Do, `src/types/network.zig` is now **965 LOC** (was 919). Still > 800 guideline but the extra ~46 LOC are doc comments added to close Q2. Reviewer decision still stands; flagging only as delta.
+| Tool | Command | Status | Notes |
+|---|---|---|---|
+| `zig fmt` | `zig fmt --check src/ tests/ build.zig examples/ bench/` | PASS (exit 0) | No diffs. |
+| `zig build check` | `zig build check` | PASS (exit 0) | No warnings / errors. |
+| `zig build test` | `zig build test --summary all` | PASS | 248/248 tests (19 ms, MaxRSS 4 M). |
+| `zig build test-integration` | — | PASS | 9/9 tests. |
+| `zig build test-extensions` | — | PASS | 11/11 tests. |
+| `zig build test-parser-edges` | — | PASS | 16/16 tests. |
+| `zig build test-performance` | — | PASS | 9/9 tests. |
+| `zig build example` | — | PASS | Example runs and prints expected output. |
+| Fuzz compile | via `test` run above | PASS | Fuzz targets compile; coverage-guided run is CI schedule-only. |
 
----
+### Pre-commit hooks (`pre-commit run --all-files`)
 
-### Dead Code
+| Hook | Status | Notes |
+|---|---|---|
+| `trailing-whitespace` / `end-of-file-fixer` / `mixed-line-ending` | PASS | |
+| `check-yaml` / `check-json` / `check-toml` | PASS | |
+| `check-added-large-files` / `check-merge-conflict` / `detect-private-key` | PASS | |
+| `shellcheck` | SKIP | No shell scripts in the repo. |
+| `markdownlint` | **FAIL** | 7 issues (see §2). |
+| `pretty-format-yaml` | **FAIL** | `.cz.yaml` reformatted by `--autofix`. The committed file disagrees with the hook (confidence::confirmed). |
+| `zig fmt (check)` | PASS | |
+| `zig build (check)` | PASS | |
+| `check-todos` (custom) | PASS | No TODO/FIXME/XXX/HACK markers anywhere in `.zig` sources. |
 
-| # | Finding | File:Line | Type | Confidence |
-|---|---------|-----------|------|------------|
-| DC1 | No zero-use `pub` symbols detected across `src/`, `tests/`, `examples/`, `docs/` (141 pub decls, all referenced at least once) | — | negative result | `confidence::confirmed` |
-| DC2 | `Ipv6Addr.hexDigitValue` is a single-line wrapper around file-scope `hexDigitToInt`; both are private | `src/types/network.zig:281-284` | redundant shim left over from Q5 consolidation | `confidence::confirmed` — callable only from `parseGroups`, can be inlined |
-| DC3 | `Mac.hexVal` is another one-line shim around `hexDigitToInt` | `src/types/network.zig:560-562` | redundant — `hexDigitToInt` is file-scoped and already visible | `confidence::confirmed` |
-| DC4 | `Range.mapParseError` (range.zig:140-145) switches on `std.fmt.ParseIntError` which has exactly two variants, both identity-mapped — Zig lets you coerce the error set directly | `src/types/range.zig:140-145` | 6-line helper replaceable with `catch \|e\| return @errorCast(e)` or simply letting `RangeError` include both variants (it already does) | `confidence::suspected` (reviewer: confirm error-set compatibility with `@errorCast`) |
-| DC5 | No `TODO` / `FIXME` / `XXX` / `HACK` markers in `src/` | — | negative result | `confidence::confirmed` |
-| DC6 | No dead test branches detected; 23 `catch unreachable` occurrences all live in `test` blocks doing `std.fmt.bufPrint` with statically known buffer sizes — idiomatic | multiple (e.g. `src/types/network.zig:629, 727, 731, 737, 798, 802, 878, 882, 934`) | **not a finding**, documented for reviewer | `confidence::confirmed` |
-| DC7 | `Vector.at` (`src/types/vector.zig:76-81`) uses `@panic` for OOB while `Vector.get` (`:84-87`) returns `?T`; both are `pub`. Any caller that wants non-panicking access has `get`; `at` is retained for ergonomics. Dead? No — used by tests and `examples/basic.zig` is not verified to call it. | `src/types/vector.zig:76` | API surface audit only — not dead | `confidence::confirmed` |
-
-Note on methodology: zero-use detection used regex word-boundary search across `.zig` + `.md` under `src/`, `tests/`, `examples/`, `docs/`, subtracting declaration sites. Generic type parameters like `Range(T)` are used via aliases `IntRange` / `UintRange` / `FloatRange`, which themselves are referenced in tests.
-
----
-
-### Performance Hotspots (quality-scan overlap — defer deep treatment to perf audit)
-
-| # | Finding | File:Line | Category | Impact | Confidence |
-|---|---------|-----------|----------|--------|------------|
-| P1 | `Ipv6Addr.parse` allocates a 16-byte scratch `right_octets: [16]u8` then memcpy's into `octets` | `src/types/network.zig:214-223` | needless alloc | low (stack, fixed size) but one extra copy per parse | `confidence::suspected` |
-| P2 | `Ipv6Addr.findDoubleColon` does a linear scan that duplicates work later done by `parseGroups` | `src/types/network.zig:236-244` | chatty I/O within function | low; one O(n) pre-scan could be fused | `confidence::suspected` |
-| P3 | `Url.parse` calls `std.mem.indexOfScalar` 4× over overlapping slices (`#`, `?`, `/`, `:`), each a fresh linear scan | `src/types/url.zig:181, 188, 197, 224` | chatty scans | low — input is short; documented for completeness | `confidence::confirmed` |
-
-These are placeholders for the perf audit to evaluate; none are correctness concerns.
+Coverage (`kcov`) and secret scanners (`gitleaks`) are CI-only; not exercised locally in this pass.
 
 ---
 
-### Build / CI Issues
+## 2. Lint / Format / Typecheck — Findings Detail
 
-| # | Finding | File:Line | Category | Impact | Confidence |
-|---|---------|-----------|----------|--------|------------|
-| B1 | CI uses Zig 0.16.0 (`.gitlab-ci.yml`, recent commit `380045a`) while `build.zig.zon:5` still declares `minimum_zig_version = "0.15.1"` | `build.zig.zon:5` vs CI | version drift / reproducibility | consumers on 0.15.1 may hit API differences not exercised in CI | `confidence::confirmed` (Phase-1 flagged this as known gap) |
-| B2 | `zig build test` runs a single suite; the "5 variants" in Phase 1 inventory refers to 1 Debug + 4 Release optimize modes, all exercising the **same** test executable — no separate fuzz-only or perf-only gate | `build.zig` | coverage gap | fuzz/perf tests always run; cannot selectively skip for fast local iteration | `confidence::suspected` (reviewer: check whether `-Dtest-filter` is wired) |
-| B3 | Raw test logs (`/tmp/test-*.log`) are empty on success because `zig build test` is silent unless `--summary all` is passed; CI may be losing signal for flaky tests | `.gitlab-ci.yml` (not read) | observability | medium — reviewer should add `--summary all` to CI test step | `confidence::suspected` |
+| Finding | File:Line | Tool | Confidence |
+|---|---|---|---|
+| MD040 fenced code block missing language | `/home/benji/src/devnw/zig/advanced-types/.gitlab/issue_templates/Bug Report.md:44` | markdownlint | confidence::confirmed |
+| MD040 fenced code block missing language | `/home/benji/src/devnw/zig/advanced-types/CONTRIBUTING.md:48` | markdownlint | confidence::confirmed |
+| MD032 list not surrounded by blank lines | `/home/benji/src/devnw/zig/advanced-types/CONTRIBUTING.md:57` | markdownlint | confidence::confirmed |
+| MD034 bare URL (`conduct@codepros.dev`) | `/home/benji/src/devnw/zig/advanced-types/CODE_OF_CONDUCT.md:50` | markdownlint | confidence::confirmed |
+| MD034 bare URL (`https://www.contributor-covenant...`) | `/home/benji/src/devnw/zig/advanced-types/CODE_OF_CONDUCT.md:58` | markdownlint | confidence::confirmed |
+| MD056 table column count (expected 4, got 3) | `/home/benji/src/devnw/zig/advanced-types/docs/audit/security-inventory.md:133` | markdownlint | confidence::confirmed |
+| MD034 bare URL (`support@codepros.dev`) | `/home/benji/src/devnw/zig/advanced-types/SUPPORT.md:41` | markdownlint | confidence::confirmed |
+| `.cz.yaml` reformatted by `pretty-format-yaml --autofix` (14 lines modified) | `/home/benji/src/devnw/zig/advanced-types/.cz.yaml` | pretty-format-yaml | confidence::confirmed |
 
-No other build-pipeline issues uncovered during this phase (caching, image size, pre-commit parity were all outside the quality-scan scope and are owned by Phase 1 inventory).
+All failures are in Markdown / YAML — no Zig issues. Fixing MD034 mail links, adding a language to the two fenced blocks, adjusting one table row in `security-inventory.md`, and either landing the formatter diff or relaxing the hook unblocks pre-commit.
 
 ---
 
-## Summary of Confidence Tags
+## 3. Duplication & Complexity
 
-- `confidence::confirmed`: 11
-- `confidence::suspected`: 8
+### File size
 
-## Not-a-finding (documented to prevent re-flagging)
+| File | LOC | Flag |
+|---|---|---|
+| `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig` | 1166 | > 800 — very large |
+| `/home/benji/src/devnw/zig/advanced-types/src/types/url.zig` | 789 | > 500 — large |
+| `/home/benji/src/devnw/zig/advanced-types/src/types/vector.zig` | 634 | > 500 — large |
+| `/home/benji/src/devnw/zig/advanced-types/tests/performance.zig` | 601 | > 500 — large (test file, many literal tables) |
+| `/home/benji/src/devnw/zig/advanced-types/src/types/geographic.zig` | 577 | > 500 — large |
+| `/home/benji/src/devnw/zig/advanced-types/src/types/range.zig` | 573 | > 500 — large |
 
-- Giant comptime type constructors `Vector(T,N)` / `Range(T)` — idiomatic.
-- `catch unreachable` in test blocks with static buffers — idiomatic.
-- `src/root.zig` low doc% — re-export façade.
-- Q1–Q13 in `docs/QUALITY_GAP_ANALYSIS.md` — already closed / Won't-Do.
+All six large files pair a public type with its tests; inventory confirms the `src/types/*.zig` pattern pulls unit tests in-file. Network is the only > 800-line hot spot; a split (Ipv4/Ipv6/Subnet/Mac) would be mechanical.
+
+### Long functions (> 40 lines, source only)
+
+| Function | File:Line | LOC |
+|---|---|---|
+| `Url.parse` | `/home/benji/src/devnw/zig/advanced-types/src/types/url.zig:190` | 108 |
+| `Ipv6Addr.format` | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:311` | 45 |
+| `Ipv6Addr.parse` | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:214` | 45 |
+
+`Url.parse` is linear (scheme → fragment → query → authority → host → port → validation); each stage is cohesive, but at 108 lines it is the one function in the codebase where a stage-level refactor (helper per stage: `parseScheme`, `splitFragmentQuery`, `parseHostPort`) would noticeably reduce review burden. `Ipv6Addr.parse` / `format` are tight given RFC-5952 canonicalisation. Confidence::suspected (stylistic, not a defect).
+
+### Nesting depth
+
+- Deepest indentation observed in `src/types/*.zig` is **5 levels** (20 spaces), driven almost entirely by the `pub fn Range(comptime T: type) type { return struct { … } }` comptime-container pattern rather than real control-flow nesting.
+- No line exceeds 24 spaces of leading indentation anywhere in `src/`. Logical nesting is ≤ 3 in every function inspected.
+- Verdict: not a complexity hotspot (confidence::confirmed via Grep sweep).
+
+### Duplication
+
+| Finding | Files | Confidence |
+|---|---|---|
+| `Ipv6Addr.hexDigitValue` and `Mac.hexVal` are thin wrappers around module-level `hexDigitToInt` | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:305`, `:643` vs. `:17` | confidence::confirmed |
+| 10 near-identical fuzz wrappers (`fuzzIpv4Parse`, `fuzzIpv6Parse`, `fuzzIpAddrParse`, `fuzzSubnetParse`, `fuzzMacParse`, `fuzzUrlParse`, `fuzzDomainParse`, `fuzzLatLonParse`, `fuzzLatLonAltParse`, `fuzzVectorF32Parse`) each have the same 3-line body (`takeSlice` → `_ = Type.parse(input) catch return;`) | `/home/benji/src/devnw/zig/advanced-types/tests/fuzz.zig:44-152` | confidence::confirmed |
+| Inline magic literals `180.0` / `-180.0` / `90.0` / `-90.0` and `math.pi / 180.0` conversion factor recur across geographic validators and haversine math without a named constant | `/home/benji/src/devnw/zig/advanced-types/src/types/geographic.zig:103,128,183,327-328,379` | confidence::suspected |
+
+No near-duplicate full-function bodies in `src/`. Parser functions share control-flow shape (validate → accumulate → return), but their per-family semantics differ; not extractable without contriving generics.
+
+### Circular dependencies
+
+`src/types/*.zig` files do not import each other (confirmed from Phase-1 module graph). `src/root.zig` is the sole aggregator; no cycles (confidence::confirmed).
+
+---
+
+## 4. Dead Code
+
+| Finding | File:Line | Type | Confidence |
+|---|---|---|---|
+| No TODO / FIXME / XXX / HACK markers in any `.zig` file | — | marker | confidence::confirmed |
+| `hexDigitValue` (u32 wrapper) could be inlined / deleted — the `hexDigitToInt` body already fits the call site with an explicit cast | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:305-308` | trivial wrapper | confidence::suspected |
+| `hexVal` (u8 wrapper) could be inlined / deleted | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:643-645` | trivial wrapper | confidence::suspected |
+
+No unused private functions were found. Private symbols inspected: `hexDigitToInt`, `parseTupleInParens`, `segments`, `findDoubleColon`, `parseGroups`, `hexDigitValue`, `hexVal`, `containsV4`, `containsV6`, `validateLabel`, `isValidDomainChar`, `validateHostChars`, `parsePortStrict`, `looksLikeIpv4`, `optionalEql`, `parseValue`, `mapParseError`, `isFloat`, `equal`, `lessThan`, `greaterThan`, `max`, `min`, `adjacent`, `parseElement` — all reachable from public entry points (confidence::confirmed).
+
+No stale feature flags (library has no runtime feature-flag concept). Zero runtime dependencies → no stale dependency manifest entries.
+
+---
+
+## 5. Zig-Specific Brittle Patterns
+
+| Finding | File:Line | Category | Confidence |
+|---|---|---|---|
+| 16 `@intCast` call sites in `network.zig` — every one is preceded by an explicit range guard (mask to `0xFF`, modulo, or a just-validated `prefix_len ≤ 128` / `≤ 32`). Confirmed safe on manual review. | `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:62-65, 91, 108, 198-199, 280-281, 298-299, 533, 564, 574, 581` | `@intCast` safety | confidence::confirmed |
+| `@panic("Vector index out of bounds")` inside `Vector.at` — documented (doc comment "Panics if index >= N.") and paired with a non-panicking `get(index) ?T` sibling. Acceptable pattern; worth a mention. | `/home/benji/src/devnw/zig/advanced-types/src/types/vector.zig:76-81` | `@panic` in hot path | confidence::confirmed |
+| Every `catch unreachable` occurrence (22 total) is inside `test "…" { … }` blocks (testing-local `bufPrint` roundtrips where the 64-byte buffer is trivially sufficient). None outside tests. | `src/types/geographic.zig`, `src/types/network.zig`, `src/types/range.zig`, `src/types/vector.zig` | `catch unreachable` outside tests | confidence::confirmed (none found) |
+| No `@truncate`, `@ptrCast`, `@alignCast`, or `@bitCast` in `src/` — library is free of unsafe reinterpretation | — | unsafe casts | confidence::confirmed |
+| Long-chain `switch` — longest observed is 4 arms (IpAddr/v4-v6 nested dispatch in `Subnet.contains`, `/home/benji/src/devnw/zig/advanced-types/src/types/network.zig:541-552`). Not a hot spot. | — | `switch` length | confidence::confirmed |
+| Magic numbers in geographic bounds and conversions (`180.0`, `-180.0`, `90.0`, `-90.0`, `math.pi/180.0`) — named constants (`earth_radius_m`) exist for Earth radius but not for degree ranges or the degrees-to-radians factor | `/home/benji/src/devnw/zig/advanced-types/src/types/geographic.zig:103,128,183,327-328` | magic numbers | confidence::suspected |
+
+---
+
+## 6. Test Quality
+
+### Assertion density by test file
+
+| File | LOC | Tests | Assertions | Density |
+|---|---|---|---|---|
+| `/home/benji/src/devnw/zig/advanced-types/tests/fuzz.zig` | 154 | 10 | 0 (crash-only invariant is the assertion) | n/a (by design) |
+| `/home/benji/src/devnw/zig/advanced-types/tests/integration.zig` | 172 | 9 | 21 | 2.3 / test |
+| `/home/benji/src/devnw/zig/advanced-types/tests/parser_edge_cases.zig` | 156 | 16 | 38 | 2.4 / test |
+| `/home/benji/src/devnw/zig/advanced-types/tests/performance.zig` | 601 | 9 | 33 | 3.7 / test (large literal tables inflate LOC) |
+| `/home/benji/src/devnw/zig/advanced-types/tests/type_extensions.zig` | 206 | 11 | 32 | 2.9 / test |
+
+### Specific test-quality findings
+
+| Finding | File:Line | Type | Confidence |
+|---|---|---|---|
+| Shallow compile-time smoke test: `test "integration: all public types are accessible"` is a sequence of `_ = lib.Type;` discards. This is a **build-time reference check only** — it never exercises behaviour. Fine as a drift guard, but should be documented or paired with one real call per type. | `/home/benji/src/devnw/zig/advanced-types/tests/integration.zig:20-47` | shallow / no-assert | confidence::confirmed |
+| Version smoke test asserts one string literal equality only | `/home/benji/src/devnw/zig/advanced-types/tests/integration.zig:16-18` | low-value | confidence::confirmed |
+| Fuzz tests contain zero `testing.expect*` calls. The invariant "no parser may panic" is implicit (test exits normally → pass). Documented in the file's doc comment — acceptable, but a comment on each wrapper would clarify intent for readers. | `/home/benji/src/devnw/zig/advanced-types/tests/fuzz.zig` | implicit assertion | confidence::confirmed |
+| Missing explicit negative-case fuzz seeds. `tests/fuzz.zig` seeds only with `Smith` arbitrary bytes — there is no corpus file for known-bad inputs (e.g. the IDN / punycode patterns from Q33 / NEW-02 are covered by `parser_edge_cases.zig`, not by fuzzing). Documented gap in Phase-1 inventory (§Missing Tooling item 5) — not raised again here. | — | coverage | confidence::suspected |
+| Performance tests act as large-table parser tests (100 valid + 100 invalid IPv4, etc.). They assert parse success/failure and occasional roundtrip equality but do not assert timing/throughput — consistent with the comment in Phase-1 inventory that these are "integration-at-scale". The filename is misleading (suggests microbenchmarks). Worth renaming or splitting. | `/home/benji/src/devnw/zig/advanced-types/tests/performance.zig:25-…` | naming | confidence::suspected |
+| No test flags fuzz-corpus persistence — CI fuzz job (`.gitlab-ci.yml:341`) emits `zig-out/fuzz/` on failure only; there is no seed-import step so rerunning a discovered crash requires manual copying. | `/home/benji/src/devnw/zig/advanced-types/.gitlab-ci.yml:341-357` | CI wiring | confidence::suspected |
+
+No source `test` blocks inside `src/types/*.zig` were sampled for shallowness — 247 declarations and full green run in 19 ms suggest sound coverage; spot-checks during the Zig-specific sweep showed realistic assertions on parse/format/roundtrip behaviour. Confidence::suspected that this remains the case across all 247.
+
+---
+
+## 7. Build & CI Performance
+
+Out-of-scope for this pass per task brief (CI config was covered in Phase-1 inventory §Missing Tooling and §CI Pipeline Stages). No new findings surface from the scanning tooling itself.
+
+---
+
+## Blockers for Downstream Phases
+
+None. All Zig-toolchain gates are green; the only failing hooks are documentation/markdown and a single YAML formatter disagreement — both orthogonal to code correctness and safe to address in a docs commit.
+
+---
+
+## Handoff
+
+- **quality-reviewer:** Spend cycles on `src/types/network.zig` (1,166 LOC, the one file past the 800 threshold) and `src/types/url.zig:190` (`Url.parse`, 108 lines). Both are the obvious candidates for a stage-level split. Duplicate `hexDigitValue` / `hexVal` wrappers are low-hanging. Fuzz-wrapper DRY-up (10 copies) would turn into ~20 lines with a comptime generic.
+- **quality-issue-tracker:** New items from this pass are all low severity: markdownlint cleanup, `.cz.yaml` formatter disagreement, `Url.parse` refactor, fuzz-wrapper dedup, and magic-number extraction in `geographic.zig`. No existing closed gap is resurrected.

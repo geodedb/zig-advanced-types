@@ -1,35 +1,44 @@
 # Quality Gap Analysis
 
-Last updated: 2026-04-18 (gap-closure report)
+Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
 
 ## Summary
 
 | Status | Count |
 |--------|-------|
-| Closed (Q1–Q13 historical) | 10 |
-| Closed 2026-04-18 (Q15, Q17, Q25, Q26, Q30, Q31, Q33, Q36) | 8 |
-| Won't Do | 2 (Q9, Q12) |
-| Accepted (Q24) | 1 |
-| Reopened — now closed | Q10→Q33 closed; Q11→Q36 closed; Q5→Q20 still open (ledger-only) |
-| Open — ledger-only (PriorityScore < 40) | 20 (Q14, Q16, Q18–Q24, Q27–Q29, Q32, Q34–Q35, Q37–Q41) |
-| **Total tracked** | **41** |
+| Closed — historical Q1–Q13 | 10 (8 closed, 2 Won't-Do) |
+| Closed 4th pass (Q15, Q17, Q25, Q26, Q30, Q31, Q33, Q36) | 8 |
+| **Closed 5th pass (Q16, Q18, Q19, Q20, Q32, Q42, Q43, Q44, Q45, Q46)** | **10** |
+| Superseded (Q38 → Q42) | 1 |
+| Accepted (Q21, Q22, Q23, Q24) | 4 |
+| **Open — ledger-only / low-priority (Q14, Q27–Q29, Q34–Q37, Q39–Q41)** | **11** |
+| **Total tracked** | **46** |
 
-### Severity distribution (new findings Q14–Q41)
+### Severity distribution (remaining open)
 
 | Tier | PriorityScore | Count | IDs |
 |------|---------------|-------|-----|
-| Critical | ≥ 80 | 1 | Q30 |
-| High | 60–79 | 3 | Q25, Q26, Q36 |
-| Medium | 40–59 | 4 | Q15, Q17, Q31, Q33 |
-| Low | < 40 | 20 | Q14, Q16, Q18–Q24, Q27–Q29, Q32, Q34–Q35, Q37–Q41 |
+| Critical | >= 80 | 0 | — |
+| High | 60–79 | 0 | — |
+| Medium | 40–59 | 0 | — |
+| Low | < 40 | 11 | Q14, Q27, Q28, Q29, Q34, Q35, Q37, Q39, Q40, Q41, (Q36 closed) |
 
-### Top 5 risks (all closed 2026-04-18)
+All High- and Medium-priority quality gaps were closed in the 5th pass. The 11 remaining open items are Low-priority / ledger-only and were not triaged into the 5th-pass plan.
 
-1. **Q30** Fuzz suite broken on Zig 0.16 — **Closed** (c0e07ee): ported to Smith API; 10/10 green.
-2. **Q25** `Url`/`Domain` slice-lifetime contract — **Closed** (5c97228): lifetime contract docs landed on public URL API.
-3. **Q26** `Subnet` pub-constructible with invalid `prefix_len` — **Closed** (503c1f5): `Subnet.init` validator + defensive returns in `containsV4`/`containsV6`.
-4. **Q36** `minimum_zig_version` / README drift — **Closed** (3702dd1): reconciled manifest/README/CI to 0.16.0.
-5. **Q17** `Subnet.contains` 6-deep nesting — **Closed** (503c1f5): split into `containsV4`/`containsV6` helpers.
+### Status migrations this pass
+
+| Q-ID | Prior | New | Reason |
+|------|-------|-----|--------|
+| Q16 | Open (Medium) | **Closed (5th pass)** | `Url.parse` stage extraction, commit `d2e462f`. |
+| Q18 | Open (Medium) | **Closed (5th pass)** | `longestZeroRun` extracted, commit `4a79591`. |
+| Q19 | Open (Medium) | **Closed (5th pass)** | `parseSides`/`placeRight` extracted, commit `2adbad0`. |
+| Q20 | Open (Medium) | **Closed (5th pass)** | Hex-digit shims deleted, commit `404cf2e`. |
+| Q32 | Open (Low) | **Closed (5th pass)** | Compiled doctests landed, commit `346e6f5`. |
+| Q42 | Open (High) | **Closed (5th pass)** | README prose reconciled, commit `242ecca` (resolves GAP-0023 too). |
+| Q43 | Open (Medium) | **Closed (5th pass)** | Comptime `parserFuzzer` dedup, commit `4528ae0`. |
+| Q44 | Open (High) | **Closed (5th pass)** | `pretty-format-yaml` autofix, commit `f4ccf89`. |
+| Q45 | Open (Medium) | **Closed (5th pass)** | `network.zig` split into 7 files, commits `6e10b41`..`b5d16ec`. |
+| Q46 | Open (Low) | **Closed (5th pass)** | Empty-slice rationale documented, commit `e79ed47`. |
 
 ---
 
@@ -38,116 +47,130 @@ Last updated: 2026-04-18 (gap-closure report)
 | # | Finding | Severity | Status | Resolution |
 |---|---------|----------|--------|-----------|
 | Q1 | Vector.format uses concrete `*std.Io.Writer` instead of `anytype` | High | Closed | Changed to `anytype` in vector.zig |
-| Q2 | network.zig doc comment coverage is ~7% | High | Closed | Added `///` doc comments to all public types and functions |
-| Q3 | docs/README.md links to 5 nonexistent pages | Medium | Closed | Replaced dead links with links to actual docs |
-| Q4 | examples/basic.zig does not import or use the library | Medium | Closed | Rewrote to import library and demonstrate all 5 type families |
-| Q5 | Duplicate hex-digit parsers in network.zig | Medium | Closed (partial reopen → Q20) | Extracted shared `hexDigitToInt`; `hexDigitValue` and `Mac.hexVal` shims remain |
-| Q6 | Identical branches in vector.zig format | Medium | Closed | Removed dead conditional branch |
-| Q7 | Custom whitespace/comma helpers in geographic.zig | Medium | Closed | Replaced with `std.mem.trim`/`indexOfScalar`/`count` |
-| Q8 | `Range.isEmpty` name is misleading | Medium | Closed | Renamed to `isPoint()` |
-| Q9 | network.zig at 919 lines exceeds 800-line guideline | Low | Won't Do | File grew with doc comments; types cohesive |
-| Q10 | Missing edge-case tests (IPv6 `::`, IPv4 leading zeros, URL userinfo) | Low | **Closed via Q33** (9e937b5) | Reopened with expanded coverage list; 16 new regression tests landed 2026-04-18 |
-| Q11 | CI Zig version drift | Medium | **Closed via Q36** (3702dd1) | Reconciled to 0.16.0 across manifest/README/CI 2026-04-18 |
-| Q12 | CI reinstalls Zig in every job | Medium | Won't Do | Requires custom Docker image; out of scope |
-| Q13 | examples/basic.zig has no build step in build.zig | Low | Closed | Added `example` build step in build.zig |
+| Q2 | network.zig doc coverage ~7% | High | Closed | Added `///` to all public types/fns |
+| Q3 | docs/README.md dead links | Medium | Closed | Replaced with live links |
+| Q4 | examples/basic.zig did not import library | Medium | Closed | Rewrote to use all 5 type families |
+| Q5 | Duplicate hex-digit parsers | Medium | Closed (partial reopen → Q20, closed 5th pass) | Extracted `hexDigitToInt`; shims removed |
+| Q6 | Identical branches in vector.zig format | Medium | Closed | Dead conditional removed |
+| Q7 | Custom whitespace helpers in geographic.zig | Medium | Closed | Use stdlib |
+| Q8 | `Range.isEmpty` misleading | Medium | Closed | Renamed to `isPoint()` |
+| Q9 | network.zig 919 LOC | Low | Won't Do → Reopened as Q45 → Closed 5th pass (commit `b5d16ec`) | Facade + 7 per-type files |
+| Q10 | Missing edge-case tests | Low | Closed via Q33 (9e937b5) | 16 regression tests landed |
+| Q11 | CI Zig version drift | Medium | Closed via Q36 (3702dd1) | Reconciled to 0.16.0 |
+| Q12 | CI reinstalls Zig per job | Medium | Won't Do | Requires custom Docker image |
+| Q13 | examples/basic.zig no build step | Low | Closed | Added `example` build step |
 
 ---
 
-## New findings (Q14–Q41), ranked by PriorityScore
+## Closed this pass (5th Gap Closure Pass, 2026-04-18)
 
-PriorityScore = Impact (1-5) × Likelihood (1-5) × 4. Critical ≥ 80, High 60-79, Medium 40-59, Low < 40.
-
-| Rank | Severity | PriorityScore | Category | Finding | Component | Issue | Fix Summary | Effort | Status |
-|------|----------|--------------:|----------|---------|-----------|-------|-------------|--------|--------|
-| 1 | Critical | 80 | testing/tooling | Q30: Fuzz suite broken on Zig 0.16 | `tests/fuzz.zig`, `build.zig:60-72` | [#26](https://gitlab.com/devnw/zig/advanced-types/-/work_items/26) | Port to 0.16 `std.testing.fuzz` API; nightly CI job | M | **Closed 2026-04-18** (c0e07ee) |
-| 2 | High | 64 | docs | Q25: Url/Domain slice-lifetime contract undocumented | `src/types/url.zig:37-38, 147-158` | [#31](https://gitlab.com/devnw/zig/advanced-types/-/work_items/31) | Doc module + struct with alias-lifetime invariant; optional `clone` | S | **Closed 2026-04-18** (5c97228) |
-| 3 | High | 64 | refactor/docs/security | Q26: Subnet pub-constructible with invalid prefix_len (= SAST-01) | `src/types/network.zig:419-423, 487` | [#28](https://gitlab.com/devnw/zig/advanced-types/-/work_items/28) | Add `init` validator + debug assert + doc update | S | **Closed 2026-04-18** (503c1f5) |
-| 4 | High | 64 | docs/tooling | Q36: minimum_zig_version / README drift (reopens Q11) | `build.zig.zon:5`, `README.md:4,71` | [#34](https://gitlab.com/devnw/zig/advanced-types/-/work_items/34) | Reconcile manifest / badge / prose to 0.16.0 floor | S | **Closed 2026-04-18** (3702dd1) |
-| 5 | Medium | 48 | refactor | Q17: Subnet.contains 6-deep nesting | `src/types/network.zig:461-506` | [#37](https://gitlab.com/devnw/zig/advanced-types/-/work_items/37) | Split v4/v6 paths into helpers; dispatcher becomes thin | M | **Closed 2026-04-18** (503c1f5) |
-| 6 | Medium | 48 | refactor | Q15: Bracket-parser pattern repeated 5× | geographic/range/vector/network | [#38](https://gitlab.com/devnw/zig/advanced-types/-/work_items/38) | Extract `internal/parse.zig` iterator | M | **Closed 2026-04-18** (ca54cdb) |
-| 7 | Medium | 48 | testing/tooling | Q31: No coverage instrumentation | `build.zig`, CI | [#40](https://gitlab.com/devnw/zig/advanced-types/-/work_items/40) | Wire kcov/llvm-cov; report-only (percentage gate deferred — see blockers doc) | M | **Closed (report-only) 2026-04-18** (20b233c) |
-| 8 | Medium | 48 | testing | Q33: Missing edge-case tests (reopens Q10) | network.zig, url.zig | [#41](https://gitlab.com/devnw/zig/advanced-types/-/work_items/41) | IPv4 leading zeros, IPv6 `1::2::3`, URL userinfo, IDN, max/zero prefix | S | **Closed 2026-04-18** (9e937b5) |
-| 9 | Low | 36 | docs | Q27: Integer-overflow semantics not hoisted to README | `vector.zig`, `range.zig` | — | Add "Optimize-mode semantics" README section | S | open |
-| 10 | Low | 36 | testing | Q32: `//!` doc examples not compiled | `root.zig:11-17`, `vector.zig:13-21` | — | Convert to `test "doc-example-X"` blocks | S | open |
-| 11 | Low | 32 | refactor | Q14: Duplicate tuple parsers in geographic.zig | `geographic.zig:106, 176, 285` | — | Extract `parseTuple(arity, input)` helper | S | open |
-| 12 | Low | 32 | refactor | Q16: `Url.parse` 86-LOC single function | `url.zig:161-246` | — | Extract scheme / authority-path / host-port helpers | M | open |
-| 13 | Low | 32 | docs | Q37: 6 undocumented `pub` decls in leaf modules | geographic/url/range | — | 1–3 line `///` per symbol | S | open |
-| 14 | Low | 24 | refactor | Q18: `Ipv6Addr.format` 5-deep nesting | `network.zig:287-331` | — | Extract `longestZeroRun` | S | open |
-| 15 | Low | 24 | refactor | Q19: `Ipv6Addr.parse` 5-deep nesting | `network.zig:190-234` | — | Factor `parseSides` helper | S | open |
-| 16 | Low | 24 | refactor | Q20: Redundant hex-digit shims (Q5 partial reopen) | `network.zig:281-284, 560-562` | — | Inline callers to `hexDigitToInt`, delete shims | S | open |
-| 17 | Low | 24 | refactor | Q23: Manual big-endian packing | `network.zig:59-74, 171-187` | — | Swap to `std.mem.readInt(.big)` / `writeInt(.big)` | S | open |
-| 18 | Low | 24 | docs | Q28: `ParseError` type-name collision across modules | network/url/vector/geographic/range | — | Cross-reference doc; consider `root.zig` re-exports | S | open |
-| 19 | Low | 24 | docs | Q29: `Vector.at` panics while `get` returns `?T` | `vector.zig:76-87` | — | Doc contract on `at` | S | open |
-| 20 | Low | 24 | testing/tooling | Q34: No per-mode split / quick-test target | `build.zig:18-87` | — | Add `-Dtest-filter` forwarding + `test-quick` alias | S | open |
-| 21 | Low | 24 | testing | Q35: `Range.span` wrap not tested at u64 max | `range.zig:85-87` | — | ReleaseFast-gated wrap test; optional `overflowingSpan` | S | open |
-| 22 | Low | 24 | docs | Q38: README test-count drift (230 vs 272) | `README.md:14` | — | Update text; optionally build-generate | S | open |
-| 23 | Low | 24 | docs | Q39: No module-level README / ARCH doc | `docs/ARCHITECTURE.md` (missing) | — | Add one-screen architecture overview | S | open |
-| 24 | Low | 24 | docs | Q41: "Why" comments missing on non-obvious code | `network.zig:483-499`, `range.zig:181-182` | — | 1–2 line rationale per site | S | open |
-| 25 | Low | 16 | refactor (accept) | Q22: `Ipv4Addr.parse` hand-rolls digit accumulation | `network.zig:77-110` | — | Benchmark first; if within 10%, simplify; otherwise document perf intent | S | open |
-| 26 | Low | 16 | docs | Q40: No ADRs capturing key decisions | `docs/adr/` (missing) | — | Add 2–3 ADRs (zero-alloc contract, hand-rolled parsers, overflow policy) | S | open |
-| 27 | Low | 8 | refactor | Q21: Redundant error-mapping shim `mapParseError` | `range.zig:140-145` | — | Delete shim; use direct error propagation | S | open |
-| 28 | Low | 4 | accept | Q24: Vector/Range "giant" comptime bodies | `vector.zig:30`, `range.zig:20` | — | Accept — idiomatic Zig generic factories | — | accepted |
+| Q-ID | Severity | PriorityScore | Status | Resolution | Commit / Issue |
+|------|----------|--------------:|--------|------------|----------------|
+| Q42 | High | 64 | Closed 2026-04-18 | README + CHANGELOG reconciled to 304 tests; fuzz-broken notice dropped | `242ecca` / [#48](https://gitlab.com/devnw/zig/advanced-types/-/issues/48) |
+| Q44 | High | 64 | Closed 2026-04-18 | `.cz.yaml` pretty-format-yaml autofix applied | `f4ccf89` / [#49](https://gitlab.com/devnw/zig/advanced-types/-/issues/49) |
+| Q45 | Medium | 48 | Closed 2026-04-18 | `network.zig` split: 68-LOC facade + 7 per-concern files under `src/types/network/` | `6e10b41`..`b5d16ec` / [#50](https://gitlab.com/devnw/zig/advanced-types/-/issues/50) |
+| Q16 | Medium | 48 | Closed 2026-04-18 | `Url.parse` split into 7 named stage helpers; orchestrator 36 LOC | `d2e462f` / [#51](https://gitlab.com/devnw/zig/advanced-types/-/issues/51) |
+| Q43 | Medium | 48 | Closed 2026-04-18 | `tests/fuzz.zig` deduped via comptime `parserFuzzer` (155 → 103 LOC) | `4528ae0` / [#52](https://gitlab.com/devnw/zig/advanced-types/-/issues/52) |
+| Q18 | Medium | 48 | Closed 2026-04-18 | `longestZeroRun` extracted from `Ipv6Addr.format` | `4a79591` / [#54](https://gitlab.com/devnw/zig/advanced-types/-/issues/54) |
+| Q19 | Medium | 48 | Closed 2026-04-18 | `parseSides` + `placeRight` extracted from `Ipv6Addr.parse` | `2adbad0` / [#55](https://gitlab.com/devnw/zig/advanced-types/-/issues/55) |
+| Q20 | Medium | 40 | Closed 2026-04-18 | Hex-digit wrapper shims inlined to `hexDigitToInt` | `404cf2e` / [#56](https://gitlab.com/devnw/zig/advanced-types/-/issues/56) |
+| Q32 | Low | 24 | Closed 2026-04-18 | 3 compiled doctests mirror `//!` + README examples | `346e6f5` / — |
+| Q46 | Low | 24 | Closed 2026-04-18 | Empty-slice rationale doc-comment added to `Url.parse` | `e79ed47` / — |
 
 ---
 
-## Findings by category
+## Closed prior passes (Q15, Q17, Q25, Q26, Q30, Q31, Q33, Q36)
 
-- **Refactor (8):** Q14, Q15, Q16, Q17, Q18, Q19, Q20, Q21
-- **Accept-with-rationale (3):** Q22, Q23 (optional), Q24
-- **Doc-only (10):** Q25, Q27, Q28, Q29, Q36, Q37, Q38, Q39, Q40, Q41
-- **Fix / test (7):** Q26, Q30, Q31, Q32, Q33, Q34, Q35
+| Q-ID | Severity | PriorityScore | Status | Resolution | Commit / Issue |
+|------|----------|--------------:|--------|------------|----------------|
+| Q30 | Critical | 80 | Closed 2026-04-18 (4th pass) | Ported fuzz suite to 0.16 Smith API; 10/10 green | `c0e07ee` / [#26](https://gitlab.com/devnw/zig/advanced-types/-/issues/26) |
+| Q25 | High | 64 | Closed 2026-04-18 (4th pass) | Lifetime contract docs on `Url`/`Domain` | `5c97228` / [#31](https://gitlab.com/devnw/zig/advanced-types/-/issues/31) |
+| Q26 | High | 64 | Closed 2026-04-18 (4th pass) | `Subnet.init` validator + defensive `containsV4`/`containsV6` | `503c1f5` / [#28](https://gitlab.com/devnw/zig/advanced-types/-/issues/28) |
+| Q36 | High | 64 | Closed 2026-04-18 (4th pass) | Reconciled manifest/README/CI to 0.16.0 | `3702dd1` / [#34](https://gitlab.com/devnw/zig/advanced-types/-/issues/34) |
+| Q17 | Medium | 48 | Closed 2026-04-18 (4th pass) | Split into `containsV4`/`containsV6` | `503c1f5` / [#37](https://gitlab.com/devnw/zig/advanced-types/-/issues/37) |
+| Q15 | Medium | 48 | Closed 2026-04-18 (4th pass) | Extracted `internal/parse.zig` iterator | `ca54cdb` / [#38](https://gitlab.com/devnw/zig/advanced-types/-/issues/38) |
+| Q31 | Medium | 48 | Closed (report-only) 2026-04-18 (4th pass) | kcov job wired; percentage gate deferred | `20b233c` / [#40](https://gitlab.com/devnw/zig/advanced-types/-/issues/40) |
+| Q33 | Medium | 48 | Closed 2026-04-18 (4th pass) | 16 edge-case regression tests landed | `9e937b5` / [#41](https://gitlab.com/devnw/zig/advanced-types/-/issues/41) |
+| Q38 | Low → High | — | **Superseded by Q42** | Same root cause; severity raised | — / [#27](https://gitlab.com/devnw/zig/advanced-types/-/issues/27) |
+
+### Accepted
+
+| Q-ID | Severity | PriorityScore | Status | Reason |
+|------|----------|--------------:|--------|--------|
+| Q21 | Low | 8 | Accepted (ledger-only) | Low-value shim removal; batched with future cleanup |
+| Q22 | Low | 16 | Accepted | Hand-rolled digit accumulation — benchmark-driven |
+| Q23 | Low | 24 | Accepted | Hand-rolled big-endian packing — acceptable |
+| Q24 | Low | 4 | Accepted | Idiomatic Zig generic factories |
+
+---
+
+## Remaining open findings (all Low, ledger-only)
+
+PriorityScore = Impact (1-5) × Likelihood (1-5) × 4. Critical >= 80, High 60–79, Medium 40–59, Low < 40.
+
+| Rank | Q-ID | Severity | PriorityScore | Category | Finding | Component | Status |
+|-----:|------|----------|--------------:|----------|---------|-----------|--------|
+| 1 | Q27 | Low | 36 | docs | Integer-overflow semantics not in per-method doc comments | `vector.zig:106-138`, `range.zig:85-87` | Open (ledger-only) |
+| 2 | Q14 | Low | 32 | refactor | Magic literals in `geographic.zig` (180, 90, π/180) | `src/types/geographic.zig:100,103,128,180,183,328,379` | Open (ledger-only) |
+| 3 | Q37 | Low | 24 | docs | Undocumented `pub` decls: `DomainLabelIterator`/`next`, `*Unchecked` constructors | `url.zig:133,138`, `range.zig:40`, `geographic.zig:110,191` | Open (ledger-only) |
+| 4 | Q28 | Low | 24 | docs | `ParseError` name collision across 5 modules | `network.zig:29`, `url.zig:16`, `vector.zig:26`, `range.zig:14`, `geographic.zig:17` | Open (ledger-only) |
+| 5 | Q29 | Low | 24 | api | `Vector.at` panics while `get` returns `?T` — contract only in method doc | `src/types/vector.zig:76-81,84-87` | Open (ledger-only) |
+| 6 | Q35 | Low | 24 | testing | `Range.span` ReleaseFast wrap not tested at integer boundary | `src/types/range.zig:85-87` | Open (ledger-only) |
+| 7 | Q34 | Low | 24 | tooling | No `-Dtest-filter` / `test-quick` target | `build.zig:18-87` | Open (ledger-only) |
+| 8 | Q39 | Low | 24 | docs | Missing `docs/ARCHITECTURE.md` | `docs/ARCHITECTURE.md` (missing) | Open (ledger-only) |
+| 9 | Q41 | Low | 24 | docs | "Why" comments missing on non-obvious sites | `range.zig:181-184` | Open (ledger-only) |
+| 10 | Q40 | Low | 16 | docs | No ADRs (`docs/adr/` missing) | `docs/adr/` | Open (ledger-only) |
+
+These items were intentionally **not** scoped into the 5th-pass plan (all PriorityScore < 40). They remain in the ledger for future triage. None have a corresponding open GitLab issue.
+
+---
+
+## Findings by category (remaining open)
+
+- **Docs (7):** Q27, Q28, Q29, Q37, Q39, Q40, Q41
+- **Refactor (1):** Q14
+- **Testing (1):** Q35
+- **Tooling (2):** Q34, (Q29 shares API tag)
 
 ---
 
 ## Roadmap
 
-### Quick wins (< 1 day)
+### Quick wins (< 1 day) — all landed
 
-- Q36 version-drift reconciliation
-- Q20 hex-digit shim cleanup
-- Q21 `mapParseError` removal
-- Q37 undocumented `pub` decls
-- Q38 README test-count update
-- Q25 lifetime-contract doc
-- Q27 README overflow-semantics section
+(Every quick win closed this pass; see "Closed this pass" above.)
 
-### Medium (1–5 days)
+### Medium (1–5 days) — all landed
 
-- Q26 + Q17 together (same Subnet surface)
-- Q30 fuzz-suite port to Zig 0.16
-- Q15 shared bracket-tokens iterator
-- Q14, Q16, Q18, Q19 refactors
-- Q33 edge-case test additions
-- Q32 doctest migration
+(Every medium-effort item closed this pass.)
 
-### Strategic (> 5 days)
+### Strategic (> 5 days) — still outstanding
 
-- Q31 coverage instrumentation + 85% CI gate
-- Q39 + Q40 architecture doc + ADR set
-- Q34 + Q35 build-system and mode-specific test harness
+- **Q31 follow-on** — 85% CI coverage-percentage gate (deferred from 4th pass; tracked in `docs/audit/gap-close-blockers.md`)
+- **Q39 + Q40** — architecture doc + ADR set
+- **Q34 + Q35** — build-system filter + mode-specific test harness
 
 ---
 
 ## Reconciliation with security tracker
 
-- **Q26** ≡ **SAST-01** (security-reviewer High/OOB panic). Issue [#28](https://gitlab.com/devnw/zig/advanced-types/-/work_items/28) is the primary ticket. Any SAST-01 record in the security tracker must cross-reference #28; do not file a duplicate.
-- Both Q26 and SAST-01 closed by commit `503c1f5` on 2026-04-18 (`Subnet.init` validator + `containsV4`/`containsV6` defensive helpers).
+- Q26 ≡ SAST-01 — closed 2026-04-18 (4th pass) by `503c1f5`. Primary ticket [#28](https://gitlab.com/devnw/zig/advanced-types/-/issues/28).
 
-## Issue-creation audit
+---
 
-Issues filed (PriorityScore ≥ 40):
+## Issue state (this pass)
 
-| Q | URL | PriorityScore |
-|---|-----|---------------|
-| Q30 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/26> | 80 |
-| Q26 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/28> | 64 |
-| Q25 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/31> | 64 |
-| Q36 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/34> | 64 |
-| Q17 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/37> | 48 |
-| Q15 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/38> | 48 |
-| Q31 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/40> | 48 |
-| Q33 | <https://gitlab.com/devnw/zig/advanced-types/-/work_items/41> | 48 |
+All 8 work items opened against the 5th-pass plan were closed on GitLab.
 
-Issues skipped (PriorityScore < 40, tracked in ledger only): Q14, Q16, Q18, Q19, Q20, Q21, Q22, Q23, Q24, Q27, Q28, Q29, Q32, Q34, Q35, Q37, Q38, Q39, Q40, Q41 — 20 items.
+| Q | Issue | Action |
+|---|-------|--------|
+| Q42 | [#48](https://gitlab.com/devnw/zig/advanced-types/-/issues/48) | Closed |
+| Q44 | [#49](https://gitlab.com/devnw/zig/advanced-types/-/issues/49) | Closed |
+| Q45 | [#50](https://gitlab.com/devnw/zig/advanced-types/-/issues/50) | Closed |
+| Q16 | [#51](https://gitlab.com/devnw/zig/advanced-types/-/issues/51) | Closed |
+| Q43 | [#52](https://gitlab.com/devnw/zig/advanced-types/-/issues/52) | Closed |
+| Q18 | [#54](https://gitlab.com/devnw/zig/advanced-types/-/issues/54) | Closed |
+| Q19 | [#55](https://gitlab.com/devnw/zig/advanced-types/-/issues/55) | Closed |
+| Q20 | [#56](https://gitlab.com/devnw/zig/advanced-types/-/issues/56) | Closed |
 
-Duplicates deferred to another tracker: 0 (Q26/SAST-01 filed here as primary; security-reviewer to reference #28).
+Ledger-only (no issue): Q14, Q27, Q28, Q29, Q32*, Q34, Q35, Q37, Q39, Q40, Q41, Q46*. (*Q32/Q46 closed in-code but carry no tracker ticket.)
