@@ -221,6 +221,80 @@ test-release-small:
   needs:
     - build
 
+# ============================================================================
+# Cross-OS / cross-architecture test matrix (GAP-0019).
+#
+# README claims "Linux, macOS, Windows, aarch64 support" but only Linux x86_64
+# is currently validated in CI. The jobs below add the missing coverage.
+#
+# NOTE: this project uses company-tagged runners. If macOS, Windows, or
+# aarch64 runners are not yet provisioned, each job will stay pending or
+# error out at dispatch; `allow_failure: true` keeps the pipeline green
+# and `rules: when: manual` prevents them from auto-starting on every push.
+# Unblocking path is tracked in docs/audit/gap-close-blockers.md.
+# ============================================================================
+
+test-macos:
+  stage: test
+  tags:
+    - macos
+  before_script:
+    - brew install zig || true
+    - zig version
+  script:
+    - zig build test --summary all
+    - zig build test-integration --summary all
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+  needs:
+    - build
+
+test-windows:
+  stage: test
+  tags:
+    - windows
+  before_script:
+    - pwsh -Command "iwr -Uri https://ziglang.org/download/$env:ZIG_VERSION/zig-x86_64-windows-$env:ZIG_VERSION.zip -OutFile zig.zip; Expand-Archive zig.zip -DestinationPath . -Force; $env:PATH = \"$PWD\\zig-x86_64-windows-$env:ZIG_VERSION;$env:PATH\"; zig version"
+  script:
+    - pwsh -Command "$env:PATH = \"$PWD\\zig-x86_64-windows-$env:ZIG_VERSION;$env:PATH\"; zig build test --summary all; zig build test-integration --summary all"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+  needs:
+    - build
+
+test-linux-aarch64:
+  stage: test
+  image: debian:bookworm-slim
+  tags:
+    - aarch64
+  before_script:
+    - *install-zig
+  script:
+    - zig build test --summary all
+    - zig build test-integration --summary all
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+      when: manual
+      allow_failure: true
+    - when: manual
+      allow_failure: true
+  allow_failure: true
+  needs:
+    - build
+
 # Coverage-guided fuzz testing.
 # Runs with a 60-second timeout so the job always terminates.
 #
