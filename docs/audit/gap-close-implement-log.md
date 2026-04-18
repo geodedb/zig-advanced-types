@@ -375,3 +375,22 @@ change. Issue closed on GitLab with the rationale + blocker reference.
 The reporter owns the ledger-side reconciliation (marking these items
 as scoped-wontdo / blocked-by-infra in
 `docs/GAP_ANALYSIS.md` and `docs/GAP_ANALYSIS_RESOLVED.md`).
+
+### Phase F (continued) -- Accepted/Won't-Do closures
+
+Commit 26 finalises the won't-do status on GitLab for the four
+issues that were graded "accepted" in `docs/audit/security-review.md`
+but left open on the issue tracker:
+
+| Issue | Title                                                                                   |
+|-------|-----------------------------------------------------------------------------------------|
+| #69   | SAST-OVERFLOW-01: Range.span / Vector arithmetic wrap silently in ReleaseFast/Small     |
+| #70   | CI-FUZZ-01: Fuzz job skipped on default MR pipelines (schedule/manual only)             |
+| #72   | OP-OWNER-01: Single CODEOWNERS owner -- account-compromise == repo-write                |
+| #73   | CI-SECRETS-01: No pre-commit gitleaks hook (CI-only coverage)                           |
+
+Each had `status::accepted` labels but was still in the "open" state.
+Posted a closing comment on each referencing the `security-review.md`
+classification, then closed via `glab issue close`. No code change.
+CI-CAT-01 (#47) was already closed before this session and was not
+touched.
