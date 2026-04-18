@@ -14,6 +14,10 @@
 //! `*std.testing.Smith`. `Smith.slice(buf)` fills a caller-provided
 //! byte buffer and returns the used length.
 //!
+//! Q43: the 10 per-parser fuzz wrappers are now generated from a single
+//! `parserFuzzer` comptime helper, collapsing ~70 LOC of boilerplate
+//! while keeping every test name identical to pre-Q43 output.
+//!
 //! Run the initial compilation check with:
 //!
 //!     zig build test-fuzz --summary all
@@ -30,125 +34,72 @@ const types = @import("advanced_types");
 /// buffer stays on the stack.
 const max_input_len: u32 = 256;
 
-/// Pull an arbitrary byte slice from `Smith` into a stack buffer and
-/// return the filled prefix.
-fn takeSlice(smith: *std.testing.Smith, buf: *[max_input_len]u8) []const u8 {
-    const n = smith.slice(buf);
-    return buf[0..n];
+/// Build a `std.testing.fuzz`-compatible target that pulls an arbitrary
+/// byte slice from `Smith` and feeds it into `T.parse`, swallowing every
+/// parse error. `T` is required to expose `pub fn parse([]const u8) !...`.
+fn parserFuzzer(comptime T: type) fn (void, *std.testing.Smith) anyerror!void {
+    return struct {
+        fn run(_: void, smith: *std.testing.Smith) anyerror!void {
+            var buf: [max_input_len]u8 = undefined;
+            const n = smith.slice(&buf);
+            const input = buf[0..n];
+            _ = T.parse(input) catch return;
+        }
+    }.run;
 }
 
 // ============================================================================
 // Network parsers
 // ============================================================================
 
-fn fuzzIpv4Parse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Ipv4Addr.parse(input) catch return;
-}
-
 test "fuzz Ipv4Addr.parse" {
-    try std.testing.fuzz({}, fuzzIpv4Parse, .{});
-}
-
-fn fuzzIpv6Parse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Ipv6Addr.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.Ipv4Addr), .{});
 }
 
 test "fuzz Ipv6Addr.parse" {
-    try std.testing.fuzz({}, fuzzIpv6Parse, .{});
-}
-
-fn fuzzIpAddrParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.IpAddr.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.Ipv6Addr), .{});
 }
 
 test "fuzz IpAddr.parse" {
-    try std.testing.fuzz({}, fuzzIpAddrParse, .{});
-}
-
-fn fuzzSubnetParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Subnet.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.IpAddr), .{});
 }
 
 test "fuzz Subnet.parse" {
-    try std.testing.fuzz({}, fuzzSubnetParse, .{});
-}
-
-fn fuzzMacParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Mac.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.Subnet), .{});
 }
 
 test "fuzz Mac.parse" {
-    try std.testing.fuzz({}, fuzzMacParse, .{});
+    try std.testing.fuzz({}, parserFuzzer(types.Mac), .{});
 }
 
 // ============================================================================
 // URL / domain parsers
 // ============================================================================
 
-fn fuzzUrlParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Url.parse(input) catch return;
-}
-
 test "fuzz Url.parse" {
-    try std.testing.fuzz({}, fuzzUrlParse, .{});
-}
-
-fn fuzzDomainParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.Domain.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.Url), .{});
 }
 
 test "fuzz Domain.parse" {
-    try std.testing.fuzz({}, fuzzDomainParse, .{});
+    try std.testing.fuzz({}, parserFuzzer(types.Domain), .{});
 }
 
 // ============================================================================
 // Geographic parsers
 // ============================================================================
 
-fn fuzzLatLonParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.LatLon.parse(input) catch return;
-}
-
 test "fuzz LatLon.parse" {
-    try std.testing.fuzz({}, fuzzLatLonParse, .{});
-}
-
-fn fuzzLatLonAltParse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.LatLonAlt.parse(input) catch return;
+    try std.testing.fuzz({}, parserFuzzer(types.LatLon), .{});
 }
 
 test "fuzz LatLonAlt.parse" {
-    try std.testing.fuzz({}, fuzzLatLonAltParse, .{});
+    try std.testing.fuzz({}, parserFuzzer(types.LatLonAlt), .{});
 }
 
 // ============================================================================
 // Vector parser
 // ============================================================================
 
-fn fuzzVectorF32Parse(_: void, smith: *std.testing.Smith) !void {
-    var buf: [max_input_len]u8 = undefined;
-    const input = takeSlice(smith, &buf);
-    _ = types.VectorF32.parse(input) catch return;
-}
-
 test "fuzz VectorF32.parse" {
-    try std.testing.fuzz({}, fuzzVectorF32Parse, .{});
+    try std.testing.fuzz({}, parserFuzzer(types.VectorF32), .{});
 }
