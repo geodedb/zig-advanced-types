@@ -93,3 +93,44 @@ test {
     // Pull in tests from all submodules
     std.testing.refAllDecls(@This());
 }
+
+// ============================================================================
+// Doc Examples (Q32) -- compiled mirrors of the `//!` module doc at the top
+// of this file and the Quick-Start block in README.md. They exist so that
+// drift between the documentation and the public API surfaces as a build
+// failure rather than a silent stale code sample.
+// ============================================================================
+
+test "doc-example-root-quickstart" {
+    // Mirrors the `//!` Quick Start block.
+    const ip = try Ipv4Addr.parse("192.168.1.1");
+    try std.testing.expectEqualSlices(u8, &.{ 192, 168, 1, 1 }, &ip.octets);
+
+    const coord = try LatLon.init(37.7749, -122.4194);
+    try std.testing.expect(coord.lat > 37.0);
+
+    const v = VectorF32.init(.{ 1.0, 2.0, 3.0 });
+    try std.testing.expectApproxEqAbs(@as(f32, 2.0), v.data[1], 1e-6);
+}
+
+test "doc-example-readme-quickstart" {
+    // Mirrors README.md "Quick Start" fenced zig block.
+    const ip = try Ipv4Addr.parse("192.168.1.1");
+    try std.testing.expect(ip.isPrivate());
+
+    const a = VectorF32.init(.{ 1.0, 0.0, 0.0 });
+    const b = VectorF32.init(.{ 0.9, 0.1, 0.0 });
+    const dist = a.cosineDistance(b);
+    try std.testing.expect(dist >= 0.0 and dist < 0.1);
+
+    const sf = try LatLon.init(37.7749, -122.4194);
+    const ny = try LatLon.init(40.7128, -74.0060);
+    const meters = sf.haversineDistance(ny);
+    try std.testing.expect(meters > 4_000_000.0 and meters < 4_200_000.0);
+
+    _ = try Url.parse("https://api.example.com:8443/v1/data");
+
+    const r1 = try IntRange.init(10, 20);
+    const r2 = try IntRange.init(15, 25);
+    try std.testing.expect(r1.overlaps(r2));
+}

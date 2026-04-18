@@ -659,3 +659,23 @@ test "VectorI32 get returns null for out-of-bounds index" {
     try testing.expectEqual(@as(?i32, null), v.get(3));
     try testing.expectEqual(@as(?i32, null), v.get(100));
 }
+
+// Doc example (Q32): mirrors the `//!` Quick Start block at the top of
+// this file. Ensures `add`, `dot`, and `normalize` keep the documented
+// signatures and numeric behaviour.
+test "doc-example-vector-quickstart" {
+    const a = VectorF32.init(.{ 1.0, 2.0, 3.0 });
+    const b = VectorF32.init(.{ 4.0, 5.0, 6.0 });
+
+    const c = a.add(b);
+    try testing.expectApproxEqAbs(@as(f32, 5.0), c.data[0], 1e-6);
+    try testing.expectApproxEqAbs(@as(f32, 7.0), c.data[1], 1e-6);
+    try testing.expectApproxEqAbs(@as(f32, 9.0), c.data[2], 1e-6);
+
+    const d = a.dot(b);
+    try testing.expectApproxEqAbs(@as(f32, 32.0), d, 1e-6);
+
+    const n = a.normalize();
+    const mag = @sqrt(n.dot(n));
+    try testing.expectApproxEqAbs(@as(f32, 1.0), mag, 1e-6);
+}
