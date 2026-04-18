@@ -300,9 +300,47 @@ test-windows:
   tags:
     - windows
   before_script:
-    - pwsh -Command "iwr -Uri https://ziglang.org/download/$env:ZIG_VERSION/zig-x86_64-windows-$env:ZIG_VERSION.zip -OutFile zig.zip; Expand-Archive zig.zip -DestinationPath . -Force; $env:PATH = \"$PWD\\zig-x86_64-windows-$env:ZIG_VERSION;$env:PATH\"; zig version"
+    # CI-SUP-02: verify Zig Windows archive SHA-256 via ziglang.org/download/index.json
+    # before extracting. Uses PowerShell Get-FileHash (shipped with Windows PS 5+).
+    - |
+      pwsh -Command "
+        \$ErrorActionPreference = 'Stop'
+        \$ver = \$env:ZIG_VERSION
+        \$parts = \$ver.Split('.')
+        if ([int]\$parts[0] -eq 0 -and [int]\$parts[1] -lt 15) {
+          \$archiveBase = \"zig-windows-x86_64-\$ver\"
+        } else {
+          \$archiveBase = \"zig-x86_64-windows-\$ver\"
+        }
+        \$zipName = \"\$archiveBase.zip\"
+        Invoke-WebRequest -Uri 'https://ziglang.org/download/index.json' -OutFile index.json
+        \$idx = Get-Content index.json | ConvertFrom-Json
+        \$expected = \$idx.\$ver.'x86_64-windows'.shasum
+        if (-not \$expected) { throw \"SHA-256 not found for \$ver/x86_64-windows\" }
+        Invoke-WebRequest -Uri \"https://ziglang.org/download/\$ver/\$zipName\" -OutFile \$zipName
+        \$actual = (Get-FileHash -Algorithm SHA256 \$zipName).Hash.ToLower()
+        if (\$actual -ne \$expected.ToLower()) {
+          throw \"SHA-256 mismatch: expected \$expected actual \$actual\"
+        }
+        Expand-Archive \$zipName -DestinationPath . -Force
+        Remove-Item \$zipName, index.json
+        \$env:PATH = \"\$PWD\\\$archiveBase;\$env:PATH\"
+        zig version
+      "
   script:
-    - pwsh -Command "$env:PATH = \"$PWD\\zig-x86_64-windows-$env:ZIG_VERSION;$env:PATH\"; zig build test --summary all; zig build test-integration --summary all"
+    - |
+      pwsh -Command "
+        \$ver = \$env:ZIG_VERSION
+        \$parts = \$ver.Split('.')
+        if ([int]\$parts[0] -eq 0 -and [int]\$parts[1] -lt 15) {
+          \$archiveBase = \"zig-windows-x86_64-\$ver\"
+        } else {
+          \$archiveBase = \"zig-x86_64-windows-\$ver\"
+        }
+        \$env:PATH = \"\$PWD\\\$archiveBase;\$env:PATH\"
+        zig build test --summary all
+        zig build test-integration --summary all
+      "
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
