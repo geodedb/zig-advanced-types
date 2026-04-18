@@ -16,6 +16,14 @@
 //! const v = types.VectorF32.init(.{ 1.0, 2.0, 3.0 });
 //! ```
 //!
+//! ## Build Modes and Overflow Semantics
+//!
+//! Integer arithmetic on `Vector` (`add`, `sub`, `scale`, `dot`,
+//! `magnitudeSquared`) and `Range.span` uses the default `+`/`-`/`*`
+//! operators. Debug and ReleaseSafe panic on overflow; ReleaseFast and
+//! ReleaseSmall wrap with defined two's-complement semantics. See
+//! `README.md` ("Build Modes and Overflow Semantics") for details.
+//!
 //! ## License
 //!
 //! Apache-2.0

@@ -66,6 +66,28 @@ const r2 = try types.IntRange.init(15, 25);
 const overlap = r1.overlaps(r2); // true
 ```
 
+## Build Modes and Overflow Semantics
+
+Several arithmetic methods rely on Zig's default `+`, `-`, and `*` operators.
+In **Debug** and **ReleaseSafe** modes the compiler inserts safety checks and
+integer overflow causes an `IntegerOverflow` panic. In **ReleaseFast** and
+**ReleaseSmall** modes those checks are elided, so overflow wraps modulo
+`2^bits` with defined two's-complement behavior.
+
+Methods affected:
+
+- `Vector.add`, `Vector.sub`, `Vector.scale`, `Vector.dot`, and
+  `Vector.magnitudeSquared` on integer vectors (e.g. `VectorI32`).
+- `Range(T).span` for integer element types (e.g. `IntRange`) when
+  `end - start` exceeds the representable range.
+
+Floating-point analogues (`VectorF32`, `FloatRange`) are unaffected; IEEE-754
+behavior is the same across all modes.
+
+If you need guaranteed trapping on overflow in release builds, build with
+`-Doptimize=ReleaseSafe`. If you rely on wrapping, operate on unsigned types
+or pre-check the inputs.
+
 ## Requirements
 
 - Zig 0.16.0 or later
