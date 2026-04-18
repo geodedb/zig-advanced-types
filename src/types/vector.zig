@@ -72,11 +72,16 @@ pub fn Vector(comptime T: type, comptime N: usize) type {
         // Element access
         // ====================================================================
 
-        /// Returns the element at the given index. Panics if index >= N.
+        /// Returns the element at the given index.
+        ///
+        /// Preconditions: `index < N`. In Debug and ReleaseSafe builds,
+        /// violating the precondition trips `std.debug.assert` and aborts
+        /// the process with a stack trace. In ReleaseFast / ReleaseSmall
+        /// the assert is compiled out and the behaviour is undefined
+        /// (caller's contract). Use `get()` for a checked, null-returning
+        /// variant that is safe under all release modes.
         pub fn at(self: Self, index: usize) T {
-            if (index >= N) {
-                @panic("Vector index out of bounds");
-            }
+            std.debug.assert(index < N);
             return self.data[index];
         }
 
@@ -344,6 +349,28 @@ test "VectorI32 at returns correct element" {
     try testing.expectEqual(@as(i32, 5), v.at(0));
     try testing.expectEqual(@as(i32, 10), v.at(1));
     try testing.expectEqual(@as(i32, 15), v.at(2));
+}
+
+test "Vector.at in range (SAST-PANIC-01 regression)" {
+    // Regression for SAST-PANIC-01: confirm `at` stays panic-free for
+    // every valid index after swapping `@panic` for `std.debug.assert`.
+    // A runtime assert does not fire for `i < N`, so this test exercises
+    // every in-range index on several lengths and element types.
+    const V3 = Vector(f32, 3);
+    const v3 = V3.init(.{ 1.0, 2.0, 3.0 });
+    var i: usize = 0;
+    while (i < 3) : (i += 1) {
+        try testing.expectApproxEqAbs(@as(f32, @floatFromInt(i + 1)), v3.at(i), epsilon);
+    }
+
+    const V5 = Vector(i32, 5);
+    const v5 = V5.init(.{ -2, -1, 0, 1, 2 });
+    try testing.expectEqual(@as(i32, -2), v5.at(0));
+    try testing.expectEqual(@as(i32, 2), v5.at(4));
+
+    // Out-of-range access via the safe alternative still returns null.
+    try testing.expectEqual(@as(?i32, null), v5.get(5));
+    try testing.expectEqual(@as(?i32, null), v5.get(std.math.maxInt(usize)));
 }
 
 test "VectorI32 eql works" {
