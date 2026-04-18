@@ -8,20 +8,30 @@
 //!   zig build bench
 //!   zig build bench -Doptimize=ReleaseFast
 //!
-//! Output is a fixed-width table to stdout: one row per benchmark with
-//! total iterations, total time, ns/op, and ops/sec. Non-zero exit
-//! indicates a benchmark crashed (e.g. the library returned an
-//! unexpected error on input that used to succeed). The intent is that
-//! CI runs this harness in "does it finish?" mode while developers
-//! inspect the numbers locally.
+//! Each benchmark runs `warmup_rounds` discarded iterations to settle
+//! CPU state, then `sample_rounds` measured rounds. Each round performs
+//! `iterations_per_round` inner iterations and reports wall time via a
+//! monotonic clock. From the per-round ns/op values we emit the minimum,
+//! median, and p95, plus a jitter figure (`(p95-min)/min`) so BENCH-02
+//! can gate on stable runs. BENCH-01 (#57).
 //!
-//! Closes I1.
+//! Pin to a single core for best stability:
+//!   taskset -c 0 zig build bench -Doptimize=ReleaseFast
+//!
+//! Output is a fixed-width table to stdout. Non-zero exit indicates a
+//! benchmark crashed; CI runs this harness in "does it finish?" mode
+//! while developers inspect the numbers locally.
 
 const std = @import("std");
 const builtin = @import("builtin");
 const lib = @import("advanced_types");
 
-const iterations: usize = 100_000;
+/// Per-round inner iterations -- amortises clock granularity.
+const iterations_per_round: usize = 100_000;
+/// Measured rounds fed into min/median/p95 aggregation.
+const sample_rounds: usize = 9;
+/// Discarded warm-up rounds before sampling.
+const warmup_rounds: usize = 3;
 
 /// Monotonic nanosecond clock. Zig 0.16 removed `std.time.Timer`; this
 /// wrapper keeps the harness portable across supported OSes by routing
@@ -36,22 +46,18 @@ fn nowNs() u64 {
                 @as(u64, @intCast(ts.nsec));
         },
         .macos, .ios, .tvos, .watchos => {
-            // macOS: mach_absolute_time() returns monotonic ticks.
-            // Fallback approximation via clock_gettime on supported versions.
             var ts: std.c.timespec = undefined;
             _ = std.c.clock_gettime(.MONOTONIC, &ts);
             return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s +
                 @as(u64, @intCast(ts.nsec));
         },
         .windows => {
-            // QueryPerformanceCounter gives ticks; scale by the frequency.
             const windows = std.os.windows;
             const freq = windows.QueryPerformanceFrequency();
             const counter = windows.QueryPerformanceCounter();
             return counter * std.time.ns_per_s / freq;
         },
         else => {
-            // Best-effort portable fallback for other OSes.
             var ts: std.c.timespec = undefined;
             _ = std.c.clock_gettime(.MONOTONIC, &ts);
             return @as(u64, @intCast(ts.sec)) * std.time.ns_per_s +
@@ -60,24 +66,68 @@ fn nowNs() u64 {
     }
 }
 
+/// Aggregated result of `sample_rounds` rounds of a benchmark.
 const BenchResult = struct {
     name: []const u8,
-    iterations: usize,
-    total_ns: u64,
-
-    fn nsPerOp(self: BenchResult) f64 {
-        return @as(f64, @floatFromInt(self.total_ns)) /
-            @as(f64, @floatFromInt(self.iterations));
-    }
+    iterations_per_round: usize,
+    rounds: usize,
+    min_ns_per_op: f64,
+    median_ns_per_op: f64,
+    p95_ns_per_op: f64,
 
     fn opsPerSec(self: BenchResult) f64 {
-        const ns = self.nsPerOp();
-        if (ns <= 0.0) return 0.0;
-        return 1.0e9 / ns;
+        if (self.min_ns_per_op <= 0.0) return 0.0;
+        return 1.0e9 / self.min_ns_per_op;
+    }
+
+    fn jitter(self: BenchResult) f64 {
+        if (self.min_ns_per_op <= 0.0) return 0.0;
+        return (self.p95_ns_per_op - self.min_ns_per_op) / self.min_ns_per_op;
     }
 };
 
-fn benchIpv4Parse() !BenchResult {
+fn ascF64(_: void, a: f64, b: f64) bool {
+    return a < b;
+}
+
+/// Run a benchmark closure `rounds` times (after `warmup_rounds` discarded
+/// rounds) and aggregate the per-round ns/op into min/median/p95.
+fn runRounds(
+    name: []const u8,
+    round_fn: *const fn () anyerror!u64,
+) !BenchResult {
+    // Warm-up -- discarded.
+    for (0..warmup_rounds) |_| {
+        _ = try round_fn();
+    }
+
+    var samples: [sample_rounds]f64 = undefined;
+    for (&samples) |*s| {
+        const ns = try round_fn();
+        s.* = @as(f64, @floatFromInt(ns)) / @as(f64, @floatFromInt(iterations_per_round));
+    }
+    std.mem.sort(f64, &samples, {}, ascF64);
+
+    const min = samples[0];
+    const median = samples[sample_rounds / 2];
+    // p95 index for 9 samples = ceil(0.95 * 9) - 1 = 8 (take max of sorted).
+    const p95 = samples[sample_rounds - 1];
+
+    return .{
+        .name = name,
+        .iterations_per_round = iterations_per_round,
+        .rounds = sample_rounds,
+        .min_ns_per_op = min,
+        .median_ns_per_op = median,
+        .p95_ns_per_op = p95,
+    };
+}
+
+// ============================================================================
+// Per-benchmark round closures
+// ============================================================================
+
+fn roundIpv4Parse() !u64 {
     const inputs = [_][]const u8{
         "127.0.0.1",
         "192.168.1.1",
@@ -87,17 +137,17 @@ fn benchIpv4Parse() !BenchResult {
     };
     const t0 = nowNs();
     var sink: u32 = 0;
-    for (0..iterations) |i| {
+    for (0..iterations_per_round) |i| {
         const input = inputs[i % inputs.len];
         const addr = try lib.Ipv4Addr.parse(input);
         sink ^= addr.toU32();
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
-    return .{ .name = "Ipv4Addr.parse", .iterations = iterations, .total_ns = elapsed };
+    return elapsed;
 }
 
-fn benchIpv6Parse() !BenchResult {
+fn roundIpv6Parse() !u64 {
     const inputs = [_][]const u8{
         "::1",
         "2001:db8::1",
@@ -107,17 +157,17 @@ fn benchIpv6Parse() !BenchResult {
     };
     const t0 = nowNs();
     var sink: u8 = 0;
-    for (0..iterations) |i| {
+    for (0..iterations_per_round) |i| {
         const input = inputs[i % inputs.len];
         const addr = try lib.Ipv6Addr.parse(input);
         sink ^= addr.octets[0];
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
-    return .{ .name = "Ipv6Addr.parse", .iterations = iterations, .total_ns = elapsed };
+    return elapsed;
 }
 
-fn benchUrlParse() !BenchResult {
+fn roundUrlParse() !u64 {
     const inputs = [_][]const u8{
         "https://www.example.com:8443/v1/data?k=v#top",
         "http://localhost:3000/api",
@@ -127,66 +177,73 @@ fn benchUrlParse() !BenchResult {
     };
     const t0 = nowNs();
     var sink: usize = 0;
-    for (0..iterations) |i| {
+    for (0..iterations_per_round) |i| {
         const input = inputs[i % inputs.len];
         const u = try lib.Url.parse(input);
         sink ^= u.host.len;
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
-    return .{ .name = "Url.parse", .iterations = iterations, .total_ns = elapsed };
+    return elapsed;
 }
 
-fn benchCosineDistance() !BenchResult {
+fn roundCosineDistance() !u64 {
     const a = lib.VectorF32.init(.{ 1.0, 0.0, 0.0 });
     const b = lib.VectorF32.init(.{ 0.9, 0.1, 0.02 });
     const t0 = nowNs();
     var sink: f32 = 0.0;
-    for (0..iterations) |_| {
+    for (0..iterations_per_round) |_| {
         sink += a.cosineDistance(b);
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
-    return .{ .name = "VectorF32.cosineDistance", .iterations = iterations, .total_ns = elapsed };
+    return elapsed;
 }
 
-fn benchHaversine() !BenchResult {
+fn roundHaversine() !u64 {
     const sf = try lib.LatLon.init(37.7749, -122.4194);
     const ny = try lib.LatLon.init(40.7128, -74.0060);
     const t0 = nowNs();
     var sink: f64 = 0.0;
-    for (0..iterations) |_| {
+    for (0..iterations_per_round) |_| {
         sink += sf.haversineDistance(ny);
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
-    return .{ .name = "LatLon.haversineDistance", .iterations = iterations, .total_ns = elapsed };
+    return elapsed;
 }
 
 pub fn main() !void {
     const p = std.debug.print;
-    p("advanced_types micro-benchmarks -- iterations={d}\n", .{iterations});
-    p("{s: <32} {s: >12} {s: >14} {s: >16}\n", .{
+    p(
+        "advanced_types micro-benchmarks -- iters/round={d}, rounds={d}, warmup={d}\n",
+        .{ iterations_per_round, sample_rounds, warmup_rounds },
+    );
+    p("{s: <32} {s: >12} {s: >12} {s: >12} {s: >10} {s: >14}\n", .{
         "benchmark",
-        "iters",
-        "ns/op",
-        "ops/sec",
+        "min ns/op",
+        "median",
+        "p95",
+        "jitter%",
+        "ops/sec (min)",
     });
-    p("--------------------------------------------------------------------------------\n", .{});
+    p("------------------------------------------------------------------------------------------------\n", .{});
 
     const results = [_]BenchResult{
-        try benchIpv4Parse(),
-        try benchIpv6Parse(),
-        try benchUrlParse(),
-        try benchCosineDistance(),
-        try benchHaversine(),
+        try runRounds("Ipv4Addr.parse", roundIpv4Parse),
+        try runRounds("Ipv6Addr.parse", roundIpv6Parse),
+        try runRounds("Url.parse", roundUrlParse),
+        try runRounds("VectorF32.cosineDistance", roundCosineDistance),
+        try runRounds("LatLon.haversineDistance", roundHaversine),
     };
 
     for (results) |r| {
-        p("{s: <32} {d: >12} {d: >14.2} {d: >16.0}\n", .{
+        p("{s: <32} {d: >12.2} {d: >12.2} {d: >12.2} {d: >10.1} {d: >14.0}\n", .{
             r.name,
-            r.iterations,
-            r.nsPerOp(),
+            r.min_ns_per_op,
+            r.median_ns_per_op,
+            r.p95_ns_per_op,
+            r.jitter() * 100.0,
             r.opsPerSec(),
         });
     }
