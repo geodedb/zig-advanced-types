@@ -222,6 +222,38 @@ pub const Ipv6Addr = struct {
         return segs;
     }
 
+    /// Q19: sides of a `::` split. `left_count` + `right_count` <= 8.
+    const Sides = struct { left_count: usize, right_count: usize, right_octets: [16]u8 };
+
+    /// Parse the two sides of a `::`-compressed IPv6 literal into
+    /// left-anchored `octets` and a scratch right buffer. Caller is
+    /// responsible for placing the right side via `placeRight`.
+    fn parseSides(input: []const u8, dc_pos: usize, octets: *[16]u8) ParseError!Sides {
+        const left = input[0..dc_pos];
+        const right_start = dc_pos + 2;
+        const right = if (right_start <= input.len) input[right_start..] else "";
+
+        var left_count: usize = 0;
+        if (left.len > 0) left_count = try parseGroups(left, octets[0..], 8);
+
+        var right_octets: [16]u8 = .{0} ** 16;
+        var right_count: usize = 0;
+        if (right.len > 0) {
+            right_count = try parseGroups(right, right_octets[0..], 8);
+            if (left_count + right_count > 8) return error.InvalidFormat;
+        }
+        return .{ .left_count = left_count, .right_count = right_count, .right_octets = right_octets };
+    }
+
+    /// Copy `right_count` already-parsed groups from `right_octets` into the
+    /// tail of `octets` so the `::` compression expands to zeros in between.
+    fn placeRight(octets: *[16]u8, sides: Sides) void {
+        const right_offset = (8 - sides.right_count) * 2;
+        for (0..sides.right_count * 2) |i| {
+            octets[right_offset + i] = sides.right_octets[i];
+        }
+    }
+
     /// Parse an IPv6 address from colon-hex notation (e.g., "2001:db8::1").
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
@@ -229,38 +261,9 @@ pub const Ipv6Addr = struct {
 
         var octets: [16]u8 = .{0} ** 16;
 
-        // Handle :: shorthand
-        // Split on "::" first to find left and right parts
-        const double_colon_pos = findDoubleColon(input);
-
-        if (double_colon_pos) |dc_pos| {
-            const left = input[0..dc_pos];
-            const right_start = dc_pos + 2;
-            const right = if (right_start <= input.len) input[right_start..] else "";
-
-            var left_count: usize = 0;
-            var right_count: usize = 0;
-
-            // Parse left groups
-            if (left.len > 0) {
-                left_count = try parseGroups(left, octets[0..], 8);
-            }
-
-            // Parse right groups
-            if (right.len > 0) {
-                var right_octets: [16]u8 = .{0} ** 16;
-                right_count = try parseGroups(right, right_octets[0..], 8);
-
-                if (left_count + right_count > 8) return error.InvalidFormat;
-
-                // Copy right groups to their position at the end
-                const right_offset = (8 - right_count) * 2;
-                for (0..right_count * 2) |i| {
-                    octets[right_offset + i] = right_octets[i];
-                }
-            }
-
-            if (left_count + right_count > 8) return error.InvalidFormat;
+        if (findDoubleColon(input)) |dc_pos| {
+            const sides = try parseSides(input, dc_pos, &octets);
+            placeRight(&octets, sides);
         } else {
             // No ::, must have exactly 8 groups
             const count = try parseGroups(input, octets[0..], 8);
