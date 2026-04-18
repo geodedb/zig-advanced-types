@@ -193,11 +193,69 @@ pub const Url = struct {
     fragment: ?[]const u8,
 
     /// Parse a URL string into its components.
+    ///
+    /// Q16: `parse` is a thin orchestrator over per-stage helpers
+    /// (`parseScheme`, `splitFragment`, `splitQuery`, `splitAuthorityPath`,
+    /// `splitUserinfo`, `parseHostPort`, `validateHostChars`). Each helper
+    /// owns exactly one grammar section and returns small, named tuples so
+    /// control flow reads top-to-bottom and individual stages can be unit-
+    /// tested or replaced in isolation. Behaviour is byte-for-byte identical
+    /// to the pre-refactor implementation; the existing url + parser-edges
+    /// + extensions suites exercise every branch.
     pub fn parse(input: []const u8) ParseError!Url {
         if (input.len == 0) return ParseError.EmptyInput;
         if (input.len > MAX_URL_INPUT) return ParseError.InputTooLong;
 
-        // Parse scheme: find "://"
+        const scheme_stage = try parseScheme(input);
+        var rest = input[scheme_stage.rest_start..];
+        if (rest.len == 0) return ParseError.MissingHost;
+
+        const frag_stage = splitFragment(rest);
+        rest = frag_stage.remaining;
+
+        const query_stage = splitQuery(rest);
+        rest = query_stage.remaining;
+
+        const auth_stage = splitAuthorityPath(input, rest, scheme_stage.rest_start);
+        if (auth_stage.authority.len == 0) return ParseError.MissingHost;
+
+        const userinfo_stage = splitUserinfo(auth_stage.authority);
+        if (userinfo_stage.host_part.len == 0) return ParseError.MissingHost;
+
+        const host_port = try parseHostPort(userinfo_stage.host_part);
+        if (host_port.host.len == 0) return ParseError.MissingHost;
+
+        try validateHost(host_port.host);
+
+        return Url{
+            .raw = input,
+            .scheme = scheme_stage.scheme,
+            .userinfo = userinfo_stage.userinfo,
+            .host = host_port.host,
+            .port = host_port.port,
+            .path = if (auth_stage.path.len == 0) "/" else auth_stage.path,
+            .query = query_stage.query,
+            .fragment = frag_stage.fragment,
+        };
+    }
+
+    // ------------------------------------------------------------------
+    // Stage helpers (Q16). Each owns one section of RFC 3986 grammar:
+    //   scheme "://" [ userinfo "@" ] host [ ":" port ] path [ "?" query ] [ "#" fragment ]
+    // Behaviour matches the pre-refactor monolithic `parse`; see the
+    // original pre-Q16 history for the inline narrative.
+    // ------------------------------------------------------------------
+
+    const SchemeStage = struct {
+        scheme: []const u8,
+        /// Offset into `input` where `rest` begins (scheme_end + 3).
+        rest_start: usize,
+    };
+
+    /// Parse the `scheme "://"` prefix. Returns the scheme slice and the
+    /// offset into `input` where the authority/path/query/fragment tail
+    /// begins. Validates scheme charset per RFC 3986 (alnum + "+-.").
+    fn parseScheme(input: []const u8) ParseError!SchemeStage {
         const scheme_end = std.mem.indexOf(u8, input, "://") orelse
             return ParseError.InvalidScheme;
         const scheme = input[0..scheme_end];
@@ -207,112 +265,115 @@ pub const Url = struct {
                 return ParseError.InvalidScheme;
             }
         }
+        return .{ .scheme = scheme, .rest_start = scheme_end + 3 };
+    }
 
-        // After "://" is the authority + path + query + fragment
-        var rest = input[scheme_end + 3 ..];
-        if (rest.len == 0) return ParseError.MissingHost;
+    const FragmentStage = struct {
+        remaining: []const u8,
+        fragment: ?[]const u8,
+    };
 
-        // Split off fragment first (rightmost '#')
-        var fragment: ?[]const u8 = null;
+    /// Strip the `#fragment` suffix, if any. Rightmost `#` wins.
+    fn splitFragment(rest: []const u8) FragmentStage {
         if (std.mem.indexOfScalar(u8, rest, '#')) |frag_pos| {
-            fragment = rest[frag_pos + 1 ..];
-            rest = rest[0..frag_pos];
+            return .{
+                .remaining = rest[0..frag_pos],
+                .fragment = rest[frag_pos + 1 ..],
+            };
         }
+        return .{ .remaining = rest, .fragment = null };
+    }
 
-        // Split off query (first '?' in what remains)
-        var query: ?[]const u8 = null;
+    const QueryStage = struct {
+        remaining: []const u8,
+        query: ?[]const u8,
+    };
+
+    /// Strip the `?query` suffix, if any. First `?` wins.
+    fn splitQuery(rest: []const u8) QueryStage {
         if (std.mem.indexOfScalar(u8, rest, '?')) |q_pos| {
-            query = rest[q_pos + 1 ..];
-            rest = rest[0..q_pos];
+            return .{
+                .remaining = rest[0..q_pos],
+                .query = rest[q_pos + 1 ..],
+            };
         }
+        return .{ .remaining = rest, .query = null };
+    }
 
-        // Now rest is authority + path
-        // Find the first '/' to split authority from path
-        var authority: []const u8 = undefined;
-        var path: []const u8 = undefined;
+    const AuthorityStage = struct {
+        authority: []const u8,
+        path: []const u8,
+    };
+
+    /// Split `rest` (authority + path) into authority and path. When there is
+    /// no `/` terminator we construct a zero-length path slice anchored at
+    /// the byte position immediately after `authority` in the original
+    /// `input` buffer so `path.ptr` stays inside `input` (keeps `Url` a pure
+    /// view with no allocation and pointer-arithmetic offsets meaningful).
+    fn splitAuthorityPath(input: []const u8, rest: []const u8, rest_start: usize) AuthorityStage {
         if (std.mem.indexOfScalar(u8, rest, '/')) |slash_pos| {
-            authority = rest[0..slash_pos];
-            path = rest[slash_pos..];
-        } else {
-            authority = rest;
-            // No '/' terminator means the URL has no path component.
-            // We deliberately construct a zero-length slice anchored at the
-            // byte position immediately after `authority` in the original
-            // `input` buffer. This keeps `path.ptr` inside `input`, so the
-            // resulting `Url` stays a pure view over the caller's memory
-            // (no dangling pointer, no allocation) and pointer arithmetic
-            // such as `path.ptr - input.ptr` remains meaningful for callers
-            // that reconstruct byte offsets. `rest` is a sub-slice of
-            // `input` starting at `scheme_end + 3`, so
-            // `scheme_end + 3 + rest.len` is the one-past-end offset of
-            // `authority` within `input`.
-            const end_off = scheme_end + 3 + rest.len;
-            path = input[end_off..end_off];
+            return .{
+                .authority = rest[0..slash_pos],
+                .path = rest[slash_pos..],
+            };
         }
+        const end_off = rest_start + rest.len;
+        return .{
+            .authority = rest,
+            .path = input[end_off..end_off],
+        };
+    }
 
-        if (authority.len == 0) return ParseError.MissingHost;
+    const UserinfoStage = struct {
+        userinfo: ?[]const u8,
+        host_part: []const u8,
+    };
 
-        // Strip userinfo (`user[:pass]@`) from the authority.
-        // Per SAST-05: any `@` in the authority splits userinfo (left) from
-        // host (right). Multiple `@` are treated as "last `@` wins" per WHATWG
-        // URL semantics so `evil.com@trusted.com` cannot be misread as host.
-        var userinfo: ?[]const u8 = null;
-        var host_part: []const u8 = authority;
+    /// Peel `user[:pass]@` from the authority. SAST-05: last `@` wins so
+    /// `evil.com@trusted.com` cannot be misread as host.
+    fn splitUserinfo(authority: []const u8) UserinfoStage {
         if (std.mem.lastIndexOfScalar(u8, authority, '@')) |at_pos| {
-            userinfo = authority[0..at_pos];
-            host_part = authority[at_pos + 1 ..];
+            return .{
+                .userinfo = authority[0..at_pos],
+                .host_part = authority[at_pos + 1 ..],
+            };
         }
-        if (host_part.len == 0) return ParseError.MissingHost;
+        return .{ .userinfo = null, .host_part = authority };
+    }
 
-        // Parse host and port from host_part.
-        // Handle IPv6 literals: [::1]:port
-        var host: []const u8 = undefined;
-        var port_val: ?u16 = null;
+    const HostPortStage = struct {
+        host: []const u8,
+        port: ?u16,
+    };
 
+    /// Parse host and optional port from the authority's host component.
+    /// Handles IPv6 bracket literals (`[::1]:8080`) and regular v4/domain
+    /// hosts. Delegates port syntax to `parsePortStrict`.
+    fn parseHostPort(host_part: []const u8) ParseError!HostPortStage {
         if (host_part[0] == '[') {
-            // IPv6 literal
             const bracket_end = std.mem.indexOfScalar(u8, host_part, ']') orelse
                 return ParseError.InvalidFormat;
-            host = host_part[0 .. bracket_end + 1];
+            const host = host_part[0 .. bracket_end + 1];
             const after_bracket = host_part[bracket_end + 1 ..];
-            if (after_bracket.len > 0) {
-                if (after_bracket[0] != ':') return ParseError.InvalidFormat;
-                port_val = try parsePortStrict(after_bracket[1..]);
-            }
-        } else {
-            // Regular host or IPv4
-            if (std.mem.lastIndexOfScalar(u8, host_part, ':')) |colon_pos| {
-                host = host_part[0..colon_pos];
-                port_val = try parsePortStrict(host_part[colon_pos + 1 ..]);
-            } else {
-                host = host_part;
-            }
+            if (after_bracket.len == 0) return .{ .host = host, .port = null };
+            if (after_bracket[0] != ':') return ParseError.InvalidFormat;
+            const port = try parsePortStrict(after_bracket[1..]);
+            return .{ .host = host, .port = port };
         }
+        if (std.mem.lastIndexOfScalar(u8, host_part, ':')) |colon_pos| {
+            const port = try parsePortStrict(host_part[colon_pos + 1 ..]);
+            return .{ .host = host_part[0..colon_pos], .port = port };
+        }
+        return .{ .host = host_part, .port = null };
+    }
 
-        if (host.len == 0) return ParseError.MissingHost;
-
-        // SAST-07: reject unsafe/control bytes in host. For the IPv6 literal
-        // `[...]`, only validate the inside.
+    /// Wrapper over `validateHostChars` that unwraps IPv6 brackets.
+    fn validateHost(host: []const u8) ParseError!void {
         if (host[0] == '[') {
             if (host.len < 2 or host[host.len - 1] != ']') return ParseError.InvalidFormat;
-            try validateHostChars(host[1 .. host.len - 1]);
-        } else {
-            try validateHostChars(host);
+            return validateHostChars(host[1 .. host.len - 1]);
         }
-
-        // If path is empty, default to "/"
-        const final_path = if (path.len == 0) "/" else path;
-
-        return Url{
-            .raw = input,
-            .scheme = scheme,
-            .userinfo = userinfo,
-            .host = host,
-            .port = port_val,
-            .path = final_path,
-            .query = query,
-            .fragment = fragment,
-        };
+        return validateHostChars(host);
     }
 
     /// Reject unsafe/control bytes in a host string per SAST-07.
