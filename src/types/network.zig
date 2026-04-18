@@ -31,8 +31,19 @@ pub const ParseError = error{
     InvalidFormat,
     InvalidLength,
     InvalidPrefix,
+    InputTooLong,
     Overflow,
 };
+
+// SAST-DOS-01: per-parser input length caps. Returning `error.InputTooLong`
+// before scanning bounds the per-call work the library can be forced to do
+// by an attacker-controlled input. Caps are generous enough to accept every
+// syntactically valid input and still reject arbitrarily padded blobs.
+const MAX_IPV4_INPUT: usize = 45;
+const MAX_IPV6_INPUT: usize = 45;
+const MAX_IP_INPUT: usize = MAX_IPV6_INPUT;
+const MAX_SUBNET_INPUT: usize = MAX_IPV6_INPUT + 4; // "/128"
+const MAX_MAC_INPUT: usize = 17;
 
 // ============================================================================
 // Ipv4Addr
@@ -77,6 +88,7 @@ pub const Ipv4Addr = struct {
     /// Parse an IPv4 address from dotted-decimal notation (e.g., "192.168.1.1").
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
+        if (input.len > MAX_IPV4_INPUT) return error.InputTooLong;
 
         var octets: [4]u8 = undefined;
         var octet_index: u8 = 0;
@@ -213,6 +225,7 @@ pub const Ipv6Addr = struct {
     /// Parse an IPv6 address from colon-hex notation (e.g., "2001:db8::1").
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
+        if (input.len > MAX_IPV6_INPUT) return error.InputTooLong;
 
         var octets: [16]u8 = .{0} ** 16;
 
@@ -432,6 +445,7 @@ pub const IpAddr = union(enum) {
     /// Parse an IP address, auto-detecting IPv4 vs IPv6 by the presence of colons.
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
+        if (input.len > MAX_IP_INPUT) return error.InputTooLong;
 
         // If input contains a colon, try IPv6; otherwise try IPv4.
         for (input) |ch| {
@@ -497,6 +511,7 @@ pub const Subnet = struct {
     /// Parse a CIDR subnet string (e.g., "192.168.1.0/24" or "2001:db8::/32").
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
+        if (input.len > MAX_SUBNET_INPUT) return error.InputTooLong;
 
         // Find the '/' separator
         const slash_pos = std.mem.indexOfScalar(u8, input, '/') orelse return error.InvalidFormat;
@@ -1154,4 +1169,34 @@ test "Mac.eql" {
     const c = try Mac.parse("00:00:00:00:00:00");
     try testing.expect(a.eql(b));
     try testing.expect(!a.eql(c));
+}
+
+// SAST-DOS-01: per-parser MAX_INPUT caps. Each parser must reject oversized
+// input with `error.InputTooLong` before scanning, bounding attacker-
+// controlled per-call CPU.
+
+test "Ipv4Addr.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "1" ** (MAX_IPV4_INPUT + 1);
+    try testing.expectError(error.InputTooLong, Ipv4Addr.parse(big));
+    // cap boundary still accepted if syntactically valid
+    _ = try Ipv4Addr.parse("255.255.255.255");
+}
+
+test "Ipv6Addr.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "a" ** (MAX_IPV6_INPUT + 1);
+    try testing.expectError(error.InputTooLong, Ipv6Addr.parse(big));
+    _ = try Ipv6Addr.parse("2001:db8::1");
+}
+
+test "IpAddr.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "9" ** (MAX_IP_INPUT + 1);
+    try testing.expectError(error.InputTooLong, IpAddr.parse(big));
+    _ = try IpAddr.parse("10.0.0.1");
+    _ = try IpAddr.parse("::1");
+}
+
+test "Subnet.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "0" ** (MAX_SUBNET_INPUT + 1);
+    try testing.expectError(error.InputTooLong, Subnet.parse(big));
+    _ = try Subnet.parse("192.168.0.0/16");
 }

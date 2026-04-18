@@ -11,7 +11,12 @@ const math = std.math;
 const testing = std.testing;
 
 /// Errors returned by Range operations.
-pub const RangeError = error{ InvalidBounds, InvalidFormat, InvalidCharacter, Overflow };
+pub const RangeError = error{ InvalidBounds, InvalidFormat, InvalidCharacter, InputTooLong, Overflow };
+
+// SAST-DOS-01: cap `Range(T).parse` input. 128 bytes fits two f64/i64
+// formatted bounds with delimiters and whitespace, well above any real
+// use-case while rejecting attacker-padded blobs.
+const MAX_RANGE_INPUT: usize = 128;
 
 /// A generic inclusive range `[lower, upper]`.
 ///
@@ -105,6 +110,7 @@ pub fn Range(comptime T: type) type {
         /// Parse a range from the string format `[lower, upper]`.
         /// Supported for integer types only.
         pub fn parse(input: []const u8) RangeError!Self {
+            if (input.len > MAX_RANGE_INPUT) return error.InputTooLong;
             const trimmed = std.mem.trim(u8, input, &std.ascii.whitespace);
             if (trimmed.len < 2) return error.InvalidFormat;
             if (trimmed[0] != '[') return error.InvalidFormat;
@@ -570,4 +576,10 @@ test "FloatRange: valid float range still works" {
     const r = try Range(f64).init(1.0, 2.0);
     try testing.expectEqual(@as(f64, 1.0), r.lower);
     try testing.expectEqual(@as(f64, 2.0), r.upper);
+}
+
+test "Range(i32).parse rejects oversized input (SAST-DOS-01)" {
+    const big = "0" ** (MAX_RANGE_INPUT + 1);
+    try testing.expectError(error.InputTooLong, Range(i32).parse(big));
+    _ = try Range(i32).parse("[1, 10]");
 }

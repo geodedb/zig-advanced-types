@@ -19,7 +19,13 @@ pub const GeoError = error{
     LongitudeOutOfRange,
     InvalidFormat,
     InvalidCharacter,
+    InputTooLong,
 };
+
+// SAST-DOS-01: geographic parsers accept parenthesized float tuples.
+// 128 bytes comfortably fits three f64-formatted numbers with separators
+// and trailing noise while rejecting arbitrarily padded input.
+const MAX_GEO_INPUT: usize = 128;
 
 // ============================================================================
 // Constants
@@ -156,6 +162,7 @@ pub const LatLon = struct {
     /// Returns `GeoError.LatitudeOutOfRange` / `GeoError.LongitudeOutOfRange`
     /// if the parsed values are out of range.
     pub fn parse(input: []const u8) GeoError!LatLon {
+        if (input.len > MAX_GEO_INPUT) return GeoError.InputTooLong;
         const fields = try parseTupleInParens(input, 2);
         const lat = std.fmt.parseFloat(f64, fields[0]) catch return GeoError.InvalidCharacter;
         const lon = std.fmt.parseFloat(f64, fields[1]) catch return GeoError.InvalidCharacter;
@@ -209,6 +216,7 @@ pub const LatLonAlt = struct {
 
     /// Parse a `LatLonAlt` from the string format `(lat, lon, alt)`.
     pub fn parse(input: []const u8) GeoError!LatLonAlt {
+        if (input.len > MAX_GEO_INPUT) return GeoError.InputTooLong;
         const fields = try parseTupleInParens(input, 3);
         const lat_val = std.fmt.parseFloat(f64, fields[0]) catch return GeoError.InvalidCharacter;
         const lon_val = std.fmt.parseFloat(f64, fields[1]) catch return GeoError.InvalidCharacter;
@@ -294,6 +302,7 @@ pub const GeoPoint = union(enum) {
     /// Determines dimensionality by counting commas inside the parentheses:
     /// one comma = 2D, two commas = 3D.
     pub fn parse(input: []const u8) GeoError!GeoPoint {
+        if (input.len > MAX_GEO_INPUT) return GeoError.InputTooLong;
         const trimmed = std.mem.trim(u8, input, &std.ascii.whitespace);
 
         if (trimmed.len < 3 or trimmed[0] != '(' or trimmed[trimmed.len - 1] != ')') {
@@ -574,4 +583,22 @@ test "GeoPoint: parse 3D" {
 
 test "GeoPoint: parse invalid" {
     try testing.expectError(GeoError.InvalidFormat, GeoPoint.parse("not a point"));
+}
+
+test "LatLon.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "x" ** (MAX_GEO_INPUT + 1);
+    try testing.expectError(GeoError.InputTooLong, LatLon.parse(big));
+    _ = try LatLon.parse("(37.7749, -122.4194)");
+}
+
+test "LatLonAlt.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "y" ** (MAX_GEO_INPUT + 1);
+    try testing.expectError(GeoError.InputTooLong, LatLonAlt.parse(big));
+    _ = try LatLonAlt.parse("(37.7749, -122.4194, 10.0)");
+}
+
+test "GeoPoint.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "z" ** (MAX_GEO_INPUT + 1);
+    try testing.expectError(GeoError.InputTooLong, GeoPoint.parse(big));
+    _ = try GeoPoint.parse("(37.7749, -122.4194)");
 }

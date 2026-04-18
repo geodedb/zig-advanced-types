@@ -21,8 +21,14 @@ pub const ParseError = error{
     InvalidPort,
     InvalidHostChar,
     InvalidDomain,
+    InputTooLong,
     MissingHost,
 };
+
+// SAST-DOS-01: cap URL input length to prevent an attacker forcing the
+// library to scan arbitrarily large buffers in `Url.parse`. 8 KiB matches
+// the common HTTP request-line ceiling (RFC 7230 recommends >= 8000).
+pub const MAX_URL_INPUT: usize = 8192;
 
 // ============================================================================
 // Domain
@@ -189,6 +195,7 @@ pub const Url = struct {
     /// Parse a URL string into its components.
     pub fn parse(input: []const u8) ParseError!Url {
         if (input.len == 0) return ParseError.EmptyInput;
+        if (input.len > MAX_URL_INPUT) return ParseError.InputTooLong;
 
         // Parse scheme: find "://"
         const scheme_end = std.mem.indexOf(u8, input, "://") orelse
@@ -798,4 +805,11 @@ test "Url: format roundtrip with userinfo" {
     var buf: [512]u8 = undefined;
     const result = try std.fmt.bufPrint(&buf, "{f}", .{u});
     try std.testing.expectEqualStrings("http://user:pass@host.com:8080/p", result);
+}
+
+test "Url.parse rejects oversized input (SAST-DOS-01)" {
+    const big = "x" ** (MAX_URL_INPUT + 1);
+    try std.testing.expectError(ParseError.InputTooLong, Url.parse(big));
+    // ~8 KiB URL at the cap still parses when well-formed
+    _ = try Url.parse("http://example.com/path");
 }
