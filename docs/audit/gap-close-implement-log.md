@@ -276,3 +276,102 @@ Ledger file changes remain off-limits to the implementer; the reporter
 will reconcile `docs/PERF_GAP_ANALYSIS.md` and
 `docs/GAP_ANALYSIS_RESOLVED.md` to reflect the Monitor-verified status
 in Step 4.
+
+## Phase E -- Q16 + Q45 (7 commits) -- COMPLETE
+
+| #  | SHA       | Subject                                                                                 | Gap    | Closes |
+|----|-----------|-----------------------------------------------------------------------------------------|--------|--------|
+| 17 | `d2e462f` | refactor(url): extract Url.parse into stage helpers                                     | Q16    | #51    |
+| 18 | `6e10b41` | refactor(network): create network/ directory; move hex helpers to network/hex.zig       | Q45.22a | --    |
+| 19 | `0add2ce` | refactor(network): move Ipv4Addr to network/ipv4.zig                                    | Q45.22b | --    |
+| 20 | `4478037` | refactor(network): move Ipv6Addr to network/ipv6.zig                                    | Q45.22c | --    |
+| 21 | `99774ca` | refactor(network): move Subnet to network/subnet.zig                                    | Q45.22d | --    |
+| 22 | `fef7e91` | refactor(network): move Mac to network/mac.zig                                          | Q45.22e | --    |
+| 23 | `b5d16ec` | refactor(network): re-export from network.zig facade; update src/root.zig               | Q45.22f | #50    |
+
+### Q16 -- Url.parse stage extraction
+
+The monolithic 108-LOC `Url.parse` is now a ~36-LOC orchestrator that
+calls, in order: `parseScheme` -> `splitFragment` -> `splitQuery` ->
+`splitAuthorityPath` -> `splitUserinfo` -> `parseHostPort` ->
+`validateHost`. Each helper owns exactly one RFC 3986 grammar section
+and returns a named tuple so the orchestrator reads top-to-bottom.
+Behaviour byte-for-byte identical; zero test changes.
+
+### Q45 -- network.zig split
+
+The 1,211-LOC monolith became a 68-LOC facade + 7 per-concern files
+under `src/types/network/`:
+
+| file                  | purpose                         | LOC |
+|-----------------------|---------------------------------|-----|
+| network.zig           | re-export facade                |  68 |
+| network/common.zig    | ParseError + MAX_*_INPUT caps   |  28 |
+| network/hex.zig       | hexDigitToInt helper            |  18 |
+| network/ipv4.zig      | Ipv4Addr + tests                | 282 |
+| network/ipv6.zig      | Ipv6Addr + tests                | 423 |
+| network/ip.zig        | IpAddr union + tests            | 127 |
+| network/subnet.zig    | Subnet + tests                  | 278 |
+| network/mac.zig       | Mac + tests                     | 162 |
+
+Each sub-commit ran all six test suites green. Public API stays
+identical -- `network.Ipv4Addr`, `root.Ipv4Addr`, every external
+caller resolves exactly as before.
+
+One deviation from the plan's literal wording: `git mv` cannot move
+part of a file, so each extraction commit introduces a new file and
+removes the relevant chunk from the facade. History is reachable via
+`git log --follow` from the new paths back to the original location.
+
+## Phase F -- Release + docs + security-closures (4 commits)
+
+| #  | SHA       | Subject                                                                                         | Gap / Closes |
+|----|-----------|-------------------------------------------------------------------------------------------------|--------------|
+| 24 | `c949582` | ci(release): sign tags + publish SBOM as release asset                                          | NEW-REL-01 / #71 |
+| 25 | (this)    | docs(gap): note external blockers for GAP-0014/15/16/17/19 (no action)                         | GAP-0014/15/16/17/19 |
+
+### NEW-REL-01 (#71) investigation + fix
+
+- `glab release list` -> no releases on the project yet.
+- `.gitlab-ci.yml:24` -- `release-semantic@v1.7.1` creates tag + draft
+  release but does not sign the tag.
+- `sbom-generate@v1.7.1` emits `gl-sbom-*.cdx.json` as a pipeline
+  artifact; nothing attaches it to the release.
+- No `cosign`/SLSA generator present.
+
+Added two tag-pipeline-only jobs (`release-sign-tag`,
+`release-attach-sbom`) guarded by `$CI_COMMIT_TAG` and
+`$RELEASE_GPG_PRIVATE_KEY` env variables so branch/MR pipelines stay
+green until the signing key is provisioned. Once the masked CI
+variables are set, tagged releases will carry (a) a GPG-signed git
+tag and (b) a CycloneDX SBOM as an official release asset.
+
+### GAP-0014/15/16/17/19 bulk-closure
+
+On GitLab only GAP-0019 (#23) is an open issue -- the remaining ledger
+IDs (GAP-0014/15/16/17) live only in `docs/GAP_ANALYSIS.md` and are
+not tracked as GitLab work items. The reporter will reconcile their
+ledger entries in Step 4.
+
+GAP-0019 ("CI Linux/x86_64-only; README claims cross-platform") was
+already partly addressed by the CI-SUP-01 / CI-SUP-02 work in Phase B:
+the matrix scaffolding for macOS, Windows, and Linux aarch64 is in
+place in `.gitlab-ci.yml`, each job gated behind `rules: when: manual`
+and `allow_failure: true`. The remaining blocker is runner provisioning
+-- the `company` runner pool does not expose `macos`, `windows`, or
+`aarch64` tags yet. That's an infra-ops task, not a repository
+change. Issue closed on GitLab with the rationale + blocker reference.
+
+### Appendix: status of GAP-0014/15/16/17/19 at end of Phase F
+
+| Gap ID    | Ledger Entry                                        | Status                                                  |
+|-----------|-----------------------------------------------------|---------------------------------------------------------|
+| GAP-0014  | (docs ledger only; no GitLab issue)                 | External blocker per ledger rationale; no code action. |
+| GAP-0015  | (docs ledger only; no GitLab issue)                 | External blocker per ledger rationale; no code action. |
+| GAP-0016  | (docs ledger only; no GitLab issue)                 | External blocker per ledger rationale; no code action. |
+| GAP-0017  | (docs ledger only; no GitLab issue)                 | External blocker per ledger rationale; no code action. |
+| GAP-0019  | `#23`                                               | Closed: matrix scaffolded; runner provisioning blocker. |
+
+The reporter owns the ledger-side reconciliation (marking these items
+as scoped-wontdo / blocked-by-infra in
+`docs/GAP_ANALYSIS.md` and `docs/GAP_ANALYSIS_RESOLVED.md`).
