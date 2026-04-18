@@ -155,6 +155,61 @@ test-integration-release-fast:
   needs:
     - build
 
+test-integration-release-small:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test-integration -Doptimize=ReleaseSmall --summary all
+  needs:
+    - build
+
+# Type-extension tests (cross-feature coverage)
+test-extensions:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test-extensions --summary all
+  needs:
+    - build
+
+# Performance / bulk-workflow tests (correctness, not benchmarks)
+test-performance:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test-performance --summary all
+  needs:
+    - build
+
+# Parser edge-case regression tests (Q33)
+test-parser-edges:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build test-parser-edges --summary all
+  needs:
+    - build
+
+# Benchmark harness (I1): exit-0 gate only; numbers inspected locally.
+bench:
+  stage: test
+  image: debian:bookworm-slim
+  before_script:
+    - *install-zig
+  script:
+    - zig build bench -Doptimize=ReleaseFast
+  allow_failure: true
+  needs:
+    - build
+
 # ReleaseSmall tests
 test-release-small:
   stage: test
