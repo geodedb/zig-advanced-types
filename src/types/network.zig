@@ -30,6 +30,7 @@ pub const ParseError = error{
     InvalidCharacter,
     InvalidFormat,
     InvalidLength,
+    InvalidPrefix,
     Overflow,
 };
 
@@ -422,6 +423,21 @@ pub const Subnet = struct {
 
     const Self = @This();
 
+    /// Create a Subnet from an address and prefix length, validating the prefix
+    /// against the address family (0..=32 for IPv4, 0..=128 for IPv6).
+    /// Returns `error.InvalidPrefix` when out of range. This is the safe
+    /// constructor -- struct-literal construction (`Subnet{ ... }`) remains
+    /// legal Zig but bypasses validation; `contains` defensively returns
+    /// `false` if `prefix_len` is out of range for the family.
+    pub fn init(address: IpAddr, prefix_len: u8) ParseError!Self {
+        const max_prefix: u8 = switch (address) {
+            .v4 => 32,
+            .v6 => 128,
+        };
+        if (prefix_len > max_prefix) return error.InvalidPrefix;
+        return .{ .network = address, .prefix_len = prefix_len };
+    }
+
     /// Parse a CIDR subnet string (e.g., "192.168.1.0/24" or "2001:db8::/32").
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
@@ -457,52 +473,53 @@ pub const Subnet = struct {
         };
     }
 
-    /// Returns true if the given address falls within this subnet.
+    /// Returns true if the given address falls within this subnet. Defensive:
+    /// if `self.prefix_len` is out of range for the family (e.g., a literal-
+    /// constructed `Subnet` with a bad prefix), returns `false` rather than
+    /// panicking.
     pub fn contains(self: Self, addr: IpAddr) bool {
-        switch (self.network) {
-            .v4 => |net4| {
-                switch (addr) {
-                    .v4 => |addr4| {
-                        if (self.prefix_len == 0) return true;
-                        if (self.prefix_len >= 32) return net4.eql(addr4);
-
-                        const shift: u5 = @intCast(@as(u8, 32) - self.prefix_len);
-                        const mask: u32 = @as(u32, 0xFFFFFFFF) << shift;
-                        return (net4.toU32() & mask) == (addr4.toU32() & mask);
-                    },
-                    .v6 => return false,
-                }
+        return switch (self.network) {
+            .v4 => |net4| switch (addr) {
+                .v4 => |addr4| containsV4(net4, self.prefix_len, addr4),
+                .v6 => false,
             },
-            .v6 => |net6| {
-                switch (addr) {
-                    .v4 => return false,
-                    .v6 => |addr6| {
-                        if (self.prefix_len == 0) return true;
-
-                        const full_bytes: u8 = self.prefix_len / 8;
-                        const remaining_bits: u3 = @intCast(self.prefix_len % 8);
-
-                        // Compare full bytes
-                        if (full_bytes > 0) {
-                            if (!std.mem.eql(u8, net6.octets[0..full_bytes], addr6.octets[0..full_bytes])) {
-                                return false;
-                            }
-                        }
-
-                        // Compare remaining bits in the next byte
-                        if (remaining_bits > 0 and full_bytes < 16) {
-                            const shift: u3 = @intCast(@as(u4, 8) - @as(u4, remaining_bits));
-                            const mask: u8 = @as(u8, 0xFF) << shift;
-                            if ((net6.octets[full_bytes] & mask) != (addr6.octets[full_bytes] & mask)) {
-                                return false;
-                            }
-                        }
-
-                        return true;
-                    },
-                }
+            .v6 => |net6| switch (addr) {
+                .v4 => false,
+                .v6 => |addr6| containsV6(net6, self.prefix_len, addr6),
             },
+        };
+    }
+
+    fn containsV4(net: Ipv4Addr, prefix_len: u8, addr: Ipv4Addr) bool {
+        if (prefix_len > 32) return false;
+        if (prefix_len == 0) return true;
+        if (prefix_len == 32) return net.eql(addr);
+
+        const shift: u5 = @intCast(@as(u8, 32) - prefix_len);
+        const mask: u32 = @as(u32, 0xFFFFFFFF) << shift;
+        return (net.toU32() & mask) == (addr.toU32() & mask);
+    }
+
+    fn containsV6(net: Ipv6Addr, prefix_len: u8, addr: Ipv6Addr) bool {
+        if (prefix_len > 128) return false;
+        if (prefix_len == 0) return true;
+
+        const full_bytes: u8 = prefix_len / 8;
+        const remaining_bits: u3 = @intCast(prefix_len % 8);
+
+        if (full_bytes > 0 and !std.mem.eql(u8, net.octets[0..full_bytes], addr.octets[0..full_bytes])) {
+            return false;
         }
+
+        if (remaining_bits > 0 and full_bytes < 16) {
+            const shift: u3 = @intCast(@as(u4, 8) - @as(u4, remaining_bits));
+            const mask: u8 = @as(u8, 0xFF) << shift;
+            if ((net.octets[full_bytes] & mask) != (addr.octets[full_bytes] & mask)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// Write this subnet in CIDR notation (address/prefix) to the given writer.
@@ -870,6 +887,43 @@ test "Subnet.contains IPv6" {
 
     // v6 subnet does not contain v4 address
     try testing.expect(!subnet.contains(IpAddr{ .v4 = Ipv4Addr.init(10, 0, 0, 1) }));
+}
+
+test "Subnet.init validates prefix for family" {
+    // Valid v4 prefixes
+    const v4 = IpAddr{ .v4 = Ipv4Addr.init(10, 0, 0, 0) };
+    _ = try Subnet.init(v4, 0);
+    _ = try Subnet.init(v4, 24);
+    _ = try Subnet.init(v4, 32);
+    // Invalid v4 prefix
+    try testing.expectError(error.InvalidPrefix, Subnet.init(v4, 33));
+    try testing.expectError(error.InvalidPrefix, Subnet.init(v4, 128));
+    try testing.expectError(error.InvalidPrefix, Subnet.init(v4, 255));
+
+    // Valid v6 prefixes
+    const v6 = IpAddr{ .v6 = Ipv6Addr.localhost };
+    _ = try Subnet.init(v6, 0);
+    _ = try Subnet.init(v6, 64);
+    _ = try Subnet.init(v6, 128);
+    // Invalid v6 prefix
+    try testing.expectError(error.InvalidPrefix, Subnet.init(v6, 129));
+    try testing.expectError(error.InvalidPrefix, Subnet.init(v6, 255));
+}
+
+test "Subnet.contains defends against out-of-range prefix_len" {
+    // Struct-literal construction bypasses init's validation.
+    // contains must return false rather than panicking.
+    const bad_v4 = Subnet{
+        .network = IpAddr{ .v4 = Ipv4Addr.init(10, 0, 0, 0) },
+        .prefix_len = 33,
+    };
+    try testing.expect(!bad_v4.contains(IpAddr{ .v4 = Ipv4Addr.init(10, 0, 0, 1) }));
+
+    const bad_v6 = Subnet{
+        .network = IpAddr{ .v6 = Ipv6Addr.localhost },
+        .prefix_len = 200,
+    };
+    try testing.expect(!bad_v6.contains(IpAddr{ .v6 = Ipv6Addr.localhost }));
 }
 
 test "Subnet.format" {
