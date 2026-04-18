@@ -1,7 +1,7 @@
 # advanced-types
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Zig](https://img.shields.io/badge/Zig-0.15.1+-orange.svg)](https://ziglang.org/)
+[![Zig](https://img.shields.io/badge/Zig-0.16.0+-orange.svg)](https://ziglang.org/)
 
 Portable value types for network addresses, vectors, geographic coordinates, URLs, and generic ranges. Extracted from Geode for reuse across projects.
 
@@ -11,7 +11,7 @@ Portable value types for network addresses, vectors, geographic coordinates, URL
 - **17 Public Types**: IP addresses, subnets, MACs, vectors, coordinates, URLs, domains, ranges
 - **Zero Allocation**: All types are stack-allocated value types
 - **Cross-Platform**: Linux, macOS, Windows, aarch64 support
-- **230 Tests**: Comprehensive unit and integration tests
+- **262 Tests**: Comprehensive unit, integration, type-extension, and performance tests (fuzz suite currently broken under Zig 0.16 -- see GAP-0020)
 
 ## Installation
 
@@ -68,7 +68,7 @@ const overlap = r1.overlaps(r2); // true
 
 ## Requirements
 
-- Zig 0.15.1 or later
+- Zig 0.16.0 or later
 
 ## Building
 
