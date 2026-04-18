@@ -25,24 +25,31 @@ Items closed on 2026-03-23 during initial type implementation.
 ## Closed on 2026-03-23 — Audit Gap Closure
 
 ### GAP-0005: README Quick Start shows nonexistent `init()` function
+
 - **Fix:** Replaced with working Quick Start demonstrating IP parsing, vectors, geographic distance, URL parsing, and range operations.
 
 ### GAP-0006: Archive/issue URLs use underscores instead of hyphens
+
 - **Fix:** Corrected all GitLab URLs in README.md, SUPPORT.md, CHANGELOG.md from `advanced_types` to `advanced-types`.
 
 ### GAP-0007: examples/basic.zig does not import or use the library
+
 - **Fix:** Rewrote to `@import("advanced_types")` and demonstrate all 5 type families. Added `example` build step to `build.zig`.
 
 ### GAP-0008: docs/README.md links to 5 nonexistent pages
+
 - **Fix:** Replaced dead links with links to actual documentation files (REQUIREMENTS.md, GAP_ANALYSIS.md, etc.).
 
 ### GAP-0009: CODEOWNERS contains placeholder @your-username
+
 - **Fix:** Updated to `@benjiv`.
 
 ### GAP-0010: CHANGELOG.md has placeholder release date
+
 - **Fix:** Removed placeholder `[0.1.0] - YYYY-MM-DD` section; consolidated content into `[Unreleased]`.
 
 ### Security findings closed (S1-S6)
+
 - **S1:** Vector.parse Inf/NaN — added validation after `parseFloat`
 - **S2:** FloatRange NaN bounds — added NaN/Inf check in `Range.init()` for float types
 - **S3:** Vector.at() panic — added `get()` returning `?T` as safe alternative
@@ -51,6 +58,7 @@ Items closed on 2026-03-23 during initial type implementation.
 - **S6:** Range.span() overflow — added doc comment warning
 
 ### Quality findings closed (Q1-Q8, Q11, Q13)
+
 - **Q1:** Vector.format writer signature — changed to `anytype`
 - **Q2:** network.zig doc comments — added to all public API
 - **Q3:** docs/README.md dead links — fixed
@@ -63,25 +71,59 @@ Items closed on 2026-03-23 during initial type implementation.
 - **Q13:** Example build step — added to build.zig
 
 ### Performance findings closed (P2, P3)
+
 - **P2:** CI ReleaseFast target — added `test-release-fast` job
 - **P3:** cosineDistance 3-pass — fused into single-pass loop
 
 ## Closed on 2026-03-23 — Second Gap Closure Pass
 
 ### GAP-0011: No code coverage measurement configured
+
 - **Fix:** Added `make coverage` and `make fuzz` targets to Makefile. LLVM coverage tools (llvm-cov, llvm-profdata) are available for report generation.
 
 ### GAP-0012: AT-TEST-002 cross-feature type-extension tests not ported
+
 - **Fix:** Created `tests/type_extensions.zig` with 11 cross-feature tests covering: IPv4 u32 roundtrip, IPv6 mapped detection, IpAddr auto-detection, subnet containment, LatLonAlt->LatLon conversion, GeoPoint interop, format/parse roundtrips (Vector, LatLon, Mac), range intersection symmetry, URL->Domain extraction.
 - **Evidence:** `zig build test-extensions` — 11/11 passing. GitLab issue #11 closed.
 
 ### GAP-0013: AT-TEST-003 integration/performance tests not ported
+
 - **Fix:** Created `tests/performance.zig` with 9 dataset integration and performance tests covering: bulk IPv4 parsing (100 valid, 100 invalid), bulk haversine (50 pairs), bulk cosine distance (50 pairs), mixed record parsing (20 rows), subnet classification (5 subnets x 20 IPs), URL batch parsing (20 URLs), range overlap detection (20 ranges), vector similarity search (10 candidates x 5 queries).
 - **Evidence:** `zig build test-performance` — 9/9 passing. GitLab issue #12 closed.
 
 ### GAP-0018: No fuzzing or property-based testing for parsers
+
 - **Fix:** Created `tests/fuzz.zig` with 10 fuzz targets (one per parser: Ipv4Addr, Ipv6Addr, IpAddr, Subnet, Mac, Url, Domain, LatLon, LatLonAlt, VectorF32). Uses Zig 0.15 `std.testing.fuzz` API. Continuous fuzzing available via `zig build test-fuzz --fuzz` or `make fuzz`.
 - **Evidence:** `zig build test-fuzz` — 10/10 passing.
+- **Regressed on 2026-04-18:** Closure refuted. Zig 0.16 changed the `std.testing.fuzz` signature; `tests/fuzz.zig:109..115` no longer compiles (10 errors). CI `fuzz` job masks the failure by running `zig build test --fuzz` instead of `test-fuzz`. Reopened as GitLab issue [#32](https://gitlab.com/devnw/zig/advanced-types/-/issues/32); remediation tracked in GAP-0020 ([#24](https://gitlab.com/devnw/zig/advanced-types/-/issues/24)).
+- **Re-closed 2026-04-18** (c0e07ee): fuzz suite ported to Zig 0.16 Smith API; 10/10 green; CI re-enabled via `zig build test-fuzz`. See [#32](https://gitlab.com/devnw/zig/advanced-types/-/issues/32) (closed).
+
+## Closed on 2026-04-18 — Third Gap Closure Pass
+
+### GAP-0011: No code coverage measurement in CI (report-only)
+
+- **Fix:** Added `coverage` CI job running kcov against the main test binary; HTML report published as pipeline artifact.
+- **Evidence:** `.gitlab-ci.yml` `coverage` job; commit `20b233c`.
+- **Note:** Landed as report-only; no percentage gate. Percentage-gate follow-up tracked in `docs/audit/gap-close-blockers.md`.
+- **Issue:** [#30](https://gitlab.com/devnw/zig/advanced-types/-/issues/30) — closed.
+
+### GAP-0020 / Q30: `tests/fuzz.zig` does not compile under Zig 0.16
+
+- **Fix:** Ported `tests/fuzz.zig` from the Zig 0.15 `std.testing.fuzz` signature to the 0.16 Smith API; compiles cleanly and exercises all 10 parser fuzz targets.
+- **Evidence:** `zig build test-fuzz` — 10/10 passing on Zig 0.16; commit `c0e07ee`.
+- **Issue:** [#24](https://gitlab.com/devnw/zig/advanced-types/-/issues/24) — closed.
+
+### GAP-0021: Missing CI jobs for `test-extensions` / `test-performance`; `test-integration` missing ReleaseSmall
+
+- **Fix:** Added dedicated `test-extensions` and `test-performance` jobs to `.gitlab-ci.yml`; extended `test-integration` matrix to include `ReleaseSmall`.
+- **Evidence:** `.gitlab-ci.yml`; commit `a5abd3e`.
+- **Issue:** [#25](https://gitlab.com/devnw/zig/advanced-types/-/issues/25) — closed.
+
+### GAP-0022: Test-count drift between README, GAP_ANALYSIS, and reality
+
+- **Fix:** Reconciled README + all four `*GAP_ANALYSIS.md` ledgers to the measured total of **303** tests across `test` (248) + `test-integration` (9) + `test-extensions` (11) + `test-performance` (9) + `test-parser-edges` (16, new) + `test-fuzz` (10, restored).
+- **Evidence:** `README.md`, `docs/GAP_ANALYSIS.md`, `docs/QUALITY_GAP_ANALYSIS.md`, `docs/PERF_GAP_ANALYSIS.md`, `docs/SECURITY_GAP_ANALYSIS.md`; commit `3702dd1`.
+- **Issue:** [#27](https://gitlab.com/devnw/zig/advanced-types/-/issues/27) — closed.
 
 ## Won't Do
 

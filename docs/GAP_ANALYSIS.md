@@ -69,37 +69,42 @@ All types are exported from `src/root.zig`:
 
 | Test suite | Count | Status |
 |---|---|---|
-| Unit tests (`zig build test`) | 233 | Passing |
+| Unit tests (`zig build test`) | 248 | Passing |
 | Integration tests (`zig build test-integration`) | 9 | Passing |
 | Type-extension tests (`zig build test-extensions`) | 11 | Passing |
 | Performance tests (`zig build test-performance`) | 9 | Passing |
-| Fuzz tests (`zig build test-fuzz`) | 10 | Passing |
-| **Total** | **272** | **All passing** |
+| Parser-edges tests (`zig build test-parser-edges`) | 16 | Passing (new; Q33) |
+| Fuzz tests (`zig build test-fuzz`) | 10 | Passing (ported to Zig 0.16 Smith API; GAP-0020) |
+| **Total runnable** | **303** | **All passing** |
 
-## Gaps (from audit 2026-03-23)
+## Gaps (from audit 2026-03-23; refreshed 2026-04-18)
 
-| Gap-ID | Finding | Severity | Status | Category |
-|--------|---------|----------|--------|----------|
-| GAP-0005 | README Quick Start shows nonexistent `init()` function | High | **Closed** | Docs |
-| GAP-0006 | Archive/issue URLs use underscores instead of hyphens | High | **Closed** | Docs |
-| GAP-0007 | examples/basic.zig does not import or use the library | Medium | **Closed** | Docs |
-| GAP-0008 | docs/README.md links to 5 nonexistent pages | Medium | **Closed** | Docs |
-| GAP-0009 | CODEOWNERS contains placeholder @your-username | Low | **Closed** | Quality |
-| GAP-0010 | CHANGELOG.md has placeholder release date | Low | **Closed** | Docs |
-| GAP-0011 | No code coverage measurement configured | Medium | **Closed** | CI/CD |
-| GAP-0012 | AT-TEST-002 cross-feature type-extension tests not ported | Medium | **Closed** | Test |
-| GAP-0013 | AT-TEST-003 integration/performance tests not ported | Medium | **Closed** | Test |
-| GAP-0014 | Wire Geode to consume types from this package | High | **Blocked** | Requirement |
-| GAP-0015 | DateRange deferred — blocked on datetime package | Low | **Blocked** | Feature |
-| GAP-0016 | Geographic st_* helpers staged for future release | Low | **Deferred** | Feature |
-| GAP-0017 | Port Geode integration tests for type consumption | Medium | **Blocked** | Test |
-| GAP-0018 | No fuzzing or property-based testing for parsers | Low | **Closed** | Test |
+| Gap-ID | Finding | Severity | Status | Category | Issue |
+|--------|---------|----------|--------|----------|-------|
+| GAP-0005 | README Quick Start shows nonexistent `init()` function | High | **Closed** | Docs | — |
+| GAP-0006 | Archive/issue URLs use underscores instead of hyphens | High | **Closed** | Docs | — |
+| GAP-0007 | examples/basic.zig does not import or use the library | Medium | **Closed** | Docs | — |
+| GAP-0008 | docs/README.md links to 5 nonexistent pages | Medium | **Closed** | Docs | — |
+| GAP-0009 | CODEOWNERS contains placeholder @your-username | Low | **Closed** | Quality | — |
+| GAP-0010 | CHANGELOG.md has placeholder release date | Low | **Closed** | Docs | — |
+| GAP-0011 | No code coverage measurement in CI | Medium | **Closed (report-only)** 2026-04-18 — kcov job added (`20b233c`); see `docs/audit/gap-close-blockers.md` for percentage-gate follow-up | CI/CD | [#30](https://gitlab.com/devnw/zig/advanced-types/-/issues/30) |
+| GAP-0012 | AT-TEST-002 cross-feature type-extension tests not ported | Medium | **Closed** | Test | — |
+| GAP-0013 | AT-TEST-003 integration/performance tests not ported | Medium | **Closed** | Test | — |
+| GAP-0014 | Wire Geode to consume types from this package | High | **Blocked** (external dep — Geode repo) | Requirement | — |
+| GAP-0015 | DateRange deferred — blocked on datetime package | Low | **Blocked** (external dep — datetime package) | Feature | — |
+| GAP-0016 | Geographic st_* helpers staged for future release | Low | **Deferred** | Feature | — |
+| GAP-0017 | Port Geode integration tests for type consumption | Medium | **Blocked** (external dep — Geode repo) | Test | — |
+| GAP-0018 | Fuzz suite broken under Zig 0.16 (superseded by GAP-0020) | Critical | **Closed** 2026-04-18 — fuzz suite ported (`c0e07ee`) | Test | [#32](https://gitlab.com/devnw/zig/advanced-types/-/issues/32) |
+| GAP-0019 | AT-NFR-003 — CI is Linux/x86_64 only; refutes README cross-platform claim | Critical | **Partial** 2026-04-18 — YAML jobs added w/ `allow_failure:true` (`505fe43`); dormant pending runner provisioning; see `docs/audit/gap-close-blockers.md` | Compliance | [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) |
+| GAP-0020 | `tests/fuzz.zig` does not compile under Zig 0.16 (`std.testing.fuzz` signature change) | Critical | **Closed** 2026-04-18 — ported to Zig 0.16 Smith API (`c0e07ee`); 10/10 green | Testing | [#24](https://gitlab.com/devnw/zig/advanced-types/-/issues/24) |
+| GAP-0021 | `test-extensions`, `test-performance` not in CI; `test-integration` missing ReleaseSmall | High | **Closed** 2026-04-18 — CI jobs added for test-extensions/test-performance + ReleaseSmall (`a5abd3e`) | CI/CD | [#25](https://gitlab.com/devnw/zig/advanced-types/-/issues/25) |
+| GAP-0022 | Test-count drift: README 230 vs GAP_ANALYSIS 272 vs actual 262 | Low | **Closed** 2026-04-18 — reconciled to 303 across README + all ledgers (`3702dd1`) | Docs | [#27](https://gitlab.com/devnw/zig/advanced-types/-/issues/27) |
 
 ## Related Audit Documents
 
-- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 10 closed, 3 won't-do
-- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 2 closed, 8 won't-do
-- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 6 closed, 1 won't-do
+- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 18 closed, 2 won't-do, 20 ledger-only, 1 accepted
+- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 6 closed, 2 monitor, 10 won't-do
+- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 12 closed, 2 won't-do
 
 ## Acceptance Criteria
 
