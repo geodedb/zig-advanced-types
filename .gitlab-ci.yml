@@ -417,13 +417,14 @@ test-linux-aarch64:
 # ============================================================================
 coverage:
   stage: coverage
-  # CI-COV-01: kcov is not packaged in Debian bookworm (dropped during the
-  # freeze); Ubuntu 24.04 universe carries it. Exposed when CI-SCHED-01
-  # let this stage actually run for the first time.
-  image: ubuntu:24.04
+  # CI-COV-01 (take 2): kcov is packaged in neither Debian bookworm nor
+  # Ubuntu noble (verified: universe enabled, package absent). Use the
+  # official kcov image instead -- Debian-based with kcov preinstalled;
+  # entrypoint cleared so GitLab can run its shell.
+  image:
+    name: kcov/kcov:v43
+    entrypoint: [""]
   before_script:
-    - apt-get update
-    - apt-get install -y kcov
     - *install-zig
   script:
     # Build the unit-test binary with debug info so kcov can decode frames.
