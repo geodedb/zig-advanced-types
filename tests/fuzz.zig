@@ -14,7 +14,7 @@
 //! `*std.testing.Smith`. `Smith.slice(buf)` fills a caller-provided
 //! byte buffer and returns the used length.
 //!
-//! Q43: the 10 per-parser fuzz wrappers are now generated from a single
+//! Q43: the 12 per-parser fuzz wrappers are now generated from a single
 //! `parserFuzzer` comptime helper, collapsing ~70 LOC of boilerplate
 //! while keeping every test name identical to pre-Q43 output.
 //!
@@ -102,4 +102,18 @@ test "fuzz LatLonAlt.parse" {
 
 test "fuzz VectorF32.parse" {
     try std.testing.fuzz({}, parserFuzzer(types.VectorF32), .{});
+}
+
+// ============================================================================
+// Range parsers
+// ============================================================================
+// ATX-06: `Range(T).parse` is integer-only (`@compileError` for floats),
+// so FloatRange cannot be fuzzed -- cover both signed and unsigned aliases.
+
+test "fuzz IntRange.parse" {
+    try std.testing.fuzz({}, parserFuzzer(types.IntRange), .{});
+}
+
+test "fuzz UintRange.parse" {
+    try std.testing.fuzz({}, parserFuzzer(types.UintRange), .{});
 }
