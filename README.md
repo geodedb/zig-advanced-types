@@ -48,7 +48,7 @@ exe.root_module.addImport("advanced_types", advanced_types.module("advanced_type
 | `Mac` | `parse`, `format`, `eql`, `isBroadcast`, `isMulticast`, `isLocallyAdministered` | Accepts `:` and `-` separators; formats uppercase colon-separated |
 | `Url` | `parse`, `effectivePort`, `domain`, `eql`, `format` | `effectivePort` returns `0` as a no-known-default sentinel for unknown schemes; component slices borrow the input buffer (caller owns lifetime) |
 | `Domain` | `parse`, `labels`, `tld`, `registeredDomain`, `eql`, `format` | ASCII-only per RFC 952/1123; IDN/Punycode out of scope (see SECURITY.md) |
-| `LatLon` / `LatLonAlt` / `GeoPoint` | `parse`, `init`, `eql`, `haversineDistance`, `haversineBroadcast` / `HaversineOrigin` | `init` validates coordinate ranges; `HaversineOrigin` precomputes the origin for one-to-many distance loops |
+| `LatLon` / `LatLonAlt` / `GeoPoint` | `parse`, `eql`; `LatLon`: `init`, `haversineDistance`, `haversineBroadcast`; `LatLonAlt`: `init`, `toLatLon`; `GeoPoint`: `lat`/`lon`/`alt`, `haversineDistance` | `init` validates coordinate ranges; `HaversineOrigin` precomputes the origin for one-to-many distance loops |
 | `Vector(T, N)` / `VectorF32` | `init`, `at`, `get`, `add`, `sub`, `scale`, `dot`, `magnitude`, `normalize`, `distance`, `cosineDistance`, `parse`, `format` | `at` asserts bounds (panics in safe modes); `get` returns `?T`; integer arithmetic wraps in ReleaseFast/ReleaseSmall (see below) |
 | `Range(T)` / `IntRange` / `UintRange` / `FloatRange` | `init`, `contains`, `containsRange`, `overlaps`, `intersection`, `union_`, `span`, `parse`, `format` | `init` validates `lower <= upper`; `span` can wrap on extreme integer ranges in unsafe modes (see below); `parse` supports integer element types only |
 
