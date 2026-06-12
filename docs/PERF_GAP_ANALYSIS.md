@@ -1,6 +1,27 @@
 # Performance Gap Analysis
 
-Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
+Last updated: 2026-06-11 (post audit-iteration-1, branch `audit/iteration-1-fixes`)
+
+## 2026-06-11 pass (audit iteration 1)
+
+Six perf items (P-IDs scoped to this pass; not the historical P1–P10 namespace
+below) were identified during the 2026-06-11 audit and all **Closed** on
+branch `audit/iteration-1-fixes`:
+
+| P-ID | Finding | Resolution | Commit |
+|------|---------|------------|--------|
+| P1 | Constant-input benchmark loops were hoisting-tainted — `Subnet.contains` and `cosineDistance` measured fully hoisted code; haversine numbers had weak semantics | De-hoisted via opaque per-iteration inputs (power-of-two corpora; opacity-barrier cost trade-off documented inline) | `66f969c`, `f7f1e38`, `a2966a2` |
+| P2 | Baselines stale after de-hoist | Full re-baseline of all 12 benchmarks in `bench/baseline.json` | `0fcd591` |
+| P3 | Baseline metric comment described the wrong statistic | Metric description corrected | `0fcd591` |
+| P4 | `Mac.format` dispatched 6 `std.fmt` calls per address | Single-buffer `writeAll`; ~6.7 ns/op vs 57.4 ns/op prior baseline (~8x) | `2c099a1` |
+| P5 | No parse benchmarks for `LatLonAlt` / `GeoPoint` | Benches added | `34f8115` |
+| P6 | CI installed python3 twice in the release job | Duplicate install removed | `fcc1ec5` |
+
+**Root-cause correction:** the 5th-pass analysis attributed the suspicious
+haversine baseline to loop hoisting. The de-hoist work showed the old number
+was stale codegen (baseline captured against different generated code), not
+hoisting — the de-hoisted measurement reproduces a sane figure. Recorded here
+so the Monitor-verified rationale isn't over-generalized.
 
 ## Summary
 

@@ -1,6 +1,6 @@
 # Quality Gap Analysis
 
-Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
+Last updated: 2026-06-11 (post 6th pass / audit iteration 1, branch `audit/iteration-1-fixes`)
 
 ## Summary
 
@@ -9,10 +9,12 @@ Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
 | Closed — historical Q1–Q13 | 10 (8 closed, 2 Won't-Do) |
 | Closed 4th pass (Q15, Q17, Q25, Q26, Q30, Q31, Q33, Q36) | 8 |
 | **Closed 5th pass (Q16, Q18, Q19, Q20, Q32, Q42, Q43, Q44, Q45, Q46)** | **10** |
+| **Closed 6th pass (Q27, Q29, Q34, Q35, Q37, Q41)** | **6** |
+| **New findings 6th pass, found and closed same pass (N1–N5)** | **5** |
 | Superseded (Q38 → Q42) | 1 |
 | Accepted (Q21, Q22, Q23, Q24) | 4 |
-| **Open — ledger-only / low-priority (Q14, Q27–Q29, Q34–Q37, Q39–Q41)** | **11** |
-| **Total tracked** | **46** |
+| **Open — ledger-only / low-priority (Q14, Q28, Q39, Q40)** | **4** |
+| **Total tracked** | **51 (46 Q + 5 N)** |
 
 ### Severity distribution (remaining open)
 
@@ -21,11 +23,36 @@ Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
 | Critical | >= 80 | 0 | — |
 | High | 60–79 | 0 | — |
 | Medium | 40–59 | 0 | — |
-| Low | < 40 | 11 | Q14, Q27, Q28, Q29, Q34, Q35, Q37, Q39, Q40, Q41, (Q36 closed) |
+| Low | < 40 | 4 | Q14, Q28, Q39, Q40 |
 
-All High- and Medium-priority quality gaps were closed in the 5th pass. The 11 remaining open items are Low-priority / ledger-only and were not triaged into the 5th-pass plan.
+All High- and Medium-priority quality gaps were closed in the 5th pass. (Note:
+the prior revision of this table stale-listed Q36 as open — Q36 was closed in
+the 4th pass, commit `3702dd1`; the summary never caught up.) The 6th pass
+(2026-06-11) closed Q27, Q29, Q34, Q35, Q37, Q41, leaving 4 Low-priority /
+ledger-only items open by deliberate choice.
 
-### Status migrations this pass
+### Status migrations — 6th pass (2026-06-11)
+
+| Q-ID | Prior | New | Reason |
+|------|-------|-----|--------|
+| Q27 | Open (Low) | **Closed (6th pass)** | Per-method overflow-mode doc comments on `Vector` arithmetic and `Range.span`, commit `8d8772d`. |
+| Q29 | Open (Low) | **Closed (6th pass)** | `at`-asserts-vs-`get`-optional contract documented at type level, commit `8d8772d`. |
+| Q34 | Open (Low) | **Closed (6th pass)** | `-Dtest-filter` build option added, commit `fd4d9db`. |
+| Q35 | Open (Low) | **Closed (6th pass)** | `Range.span` wrap regression test in unsafe modes, commits `fd4d9db` + `8d307df` (comment correction). |
+| Q37 | Open (Low) | **Closed (6th pass)** | `DomainLabelIterator`/`next` and `*Unchecked` constructors documented, commit `8d8772d`. |
+| Q41 | Open (Low) | **Closed (6th pass)** | "Why" comments added at non-obvious sites (incl. `range.zig` parse rationale), commit `8d8772d`. |
+
+New findings this pass — found and closed in the same pass:
+
+| N-ID | Finding | Resolution | Commit |
+|------|---------|------------|--------|
+| N1 | `Subnet.parse` returned `error.Overflow` for out-of-range prefix while `init` returned `error.InvalidPrefix` | `parse` now returns `error.InvalidPrefix`, matching `init` | `a2eda93` |
+| N2 | `IpAddr` lacked `isLoopback`/`isMulticast`/`isSafeForOutboundFetch` forwarding, forcing callers to switch on the variant | Forwarding methods added with tests | `50ae19f` |
+| N3 | `Url.effectivePort` 0-sentinel for unknown schemes undocumented | Doc comment on the 0-as-no-known-default sentinel | `8d8772d` |
+| N4 | README test count (304) and tarball URL (v0.1.0) stale; SECURITY.md said "GitHub issues" | README/CHANGELOG/SECURITY synced (322 tests, v0.1.2, GitLab confidential-issue path) | `02ac589` |
+| N5 | `IpAddr.parse` v4/v6 dispatch rule (colon presence) undocumented | Dispatch + error-attribution consequence documented | `50ae19f` |
+
+### Status migrations — 5th pass (2026-04-18)
 
 | Q-ID | Prior | New | Reason |
 |------|-------|-----|--------|
@@ -110,27 +137,21 @@ PriorityScore = Impact (1-5) × Likelihood (1-5) × 4. Critical >= 80, High 60�
 
 | Rank | Q-ID | Severity | PriorityScore | Category | Finding | Component | Status |
 |-----:|------|----------|--------------:|----------|---------|-----------|--------|
-| 1 | Q27 | Low | 36 | docs | Integer-overflow semantics not in per-method doc comments | `vector.zig:106-138`, `range.zig:85-87` | Open (ledger-only) |
-| 2 | Q14 | Low | 32 | refactor | Magic literals in `geographic.zig` (180, 90, π/180) | `src/types/geographic.zig:100,103,128,180,183,328,379` | Open (ledger-only) |
-| 3 | Q37 | Low | 24 | docs | Undocumented `pub` decls: `DomainLabelIterator`/`next`, `*Unchecked` constructors | `url.zig:133,138`, `range.zig:40`, `geographic.zig:110,191` | Open (ledger-only) |
-| 4 | Q28 | Low | 24 | docs | `ParseError` name collision across 5 modules | `network.zig:29`, `url.zig:16`, `vector.zig:26`, `range.zig:14`, `geographic.zig:17` | Open (ledger-only) |
-| 5 | Q29 | Low | 24 | api | `Vector.at` panics while `get` returns `?T` — contract only in method doc | `src/types/vector.zig:76-81,84-87` | Open (ledger-only) |
-| 6 | Q35 | Low | 24 | testing | `Range.span` ReleaseFast wrap not tested at integer boundary | `src/types/range.zig:85-87` | Open (ledger-only) |
-| 7 | Q34 | Low | 24 | tooling | No `-Dtest-filter` / `test-quick` target | `build.zig:18-87` | Open (ledger-only) |
-| 8 | Q39 | Low | 24 | docs | Missing `docs/ARCHITECTURE.md` | `docs/ARCHITECTURE.md` (missing) | Open (ledger-only) |
-| 9 | Q41 | Low | 24 | docs | "Why" comments missing on non-obvious sites | `range.zig:181-184` | Open (ledger-only) |
-| 10 | Q40 | Low | 16 | docs | No ADRs (`docs/adr/` missing) | `docs/adr/` | Open (ledger-only) |
+| 1 | Q14 | Low | 32 | refactor | Magic literals in `geographic.zig` (180, 90, π/180) | `src/types/geographic.zig:100,103,128,180,183,328,379` | Open (ledger-only) — kept: numeric-refactor risk; wants its own PR with bench verification |
+| 2 | Q28 | Low | 24 | docs | `ParseError` name collision across 5 modules | `network.zig:29`, `url.zig:16`, `vector.zig:26`, `range.zig:14`, `geographic.zig:17` | Open (ledger-only) — kept: rename is a breaking API change |
+| 3 | Q39 | Low | 24 | docs | Missing `docs/ARCHITECTURE.md` | `docs/ARCHITECTURE.md` (missing) | Open (ledger-only) — kept: authored doc, scheduled deliberately |
+| 4 | Q40 | Low | 16 | docs | No ADRs (`docs/adr/` missing) | `docs/adr/` | Open (ledger-only) — kept: authored doc, scheduled deliberately |
 
-These items were intentionally **not** scoped into the 5th-pass plan (all PriorityScore < 40). They remain in the ledger for future triage. None have a corresponding open GitLab issue.
+Q27, Q29, Q34, Q35, Q37, and Q41 left this table in the 6th pass (2026-06-11);
+see "Status migrations — 6th pass" above. The 4 remaining items stay open by
+deliberate choice, not neglect. None have a corresponding open GitLab issue.
 
 ---
 
 ## Findings by category (remaining open)
 
-- **Docs (7):** Q27, Q28, Q29, Q37, Q39, Q40, Q41
+- **Docs (3):** Q28, Q39, Q40
 - **Refactor (1):** Q14
-- **Testing (1):** Q35
-- **Tooling (2):** Q34, (Q29 shares API tag)
 
 ---
 
@@ -148,7 +169,7 @@ These items were intentionally **not** scoped into the 5th-pass plan (all Priori
 
 - **Q31 follow-on** — 85% CI coverage-percentage gate (deferred from 4th pass; tracked in `docs/audit/gap-close-blockers.md`)
 - **Q39 + Q40** — architecture doc + ADR set
-- **Q34 + Q35** — build-system filter + mode-specific test harness
+- ~~**Q34 + Q35** — build-system filter + mode-specific test harness~~ Closed 6th pass (`fd4d9db`)
 
 ---
 
@@ -173,4 +194,4 @@ All 8 work items opened against the 5th-pass plan were closed on GitLab.
 | Q19 | [#55](https://gitlab.com/devnw/zig/advanced-types/-/issues/55) | Closed |
 | Q20 | [#56](https://gitlab.com/devnw/zig/advanced-types/-/issues/56) | Closed |
 
-Ledger-only (no issue): Q14, Q27, Q28, Q29, Q32*, Q34, Q35, Q37, Q39, Q40, Q41, Q46*. (*Q32/Q46 closed in-code but carry no tracker ticket.)
+Ledger-only (no issue): Q14, Q27*, Q28, Q29*, Q32*, Q34*, Q35*, Q37*, Q39, Q40, Q41*, Q46*, N1–N5*. (*Closed in-code — Q32/Q46 in the 5th pass, Q27/Q29/Q34/Q35/Q37/Q41 and N1–N5 in the 6th pass — but carry no tracker ticket. Still open: Q14, Q28, Q39, Q40.)

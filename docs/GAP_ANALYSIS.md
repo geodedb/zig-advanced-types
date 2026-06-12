@@ -1,6 +1,6 @@
 # GAP Analysis
 
-Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
+Last updated: 2026-06-11 (post audit-iteration-1 fixes, branch `audit/iteration-1-fixes`)
 
 Repository status: types implemented from spec; Geode source not yet wired as consumer. Open gaps below; closed items live in [GAP_ANALYSIS_RESOLVED.md](GAP_ANALYSIS_RESOLVED.md).
 
@@ -69,19 +69,23 @@ All types are exported from `src/root.zig`:
 
 | Test suite | Count | Status |
 |---|---|---|
-| Unit tests (`zig build test`) | 262 | Passing |
+| Unit tests (`zig build test`) | 265 | Passing (264 pass, 1 skip) |
 | Integration tests (`zig build test-integration`) | 9 | Passing |
 | Type-extension tests (`zig build test-extensions`) | 11 | Passing |
 | Performance tests (`zig build test-performance`) | 9 | Passing |
 | Parser-edges tests (`zig build test-parser-edges`) | 16 | Passing (Q33) |
-| Fuzz tests (`zig build test-fuzz`) | 10 | Passing (Zig 0.16 Smith API; GAP-0020) |
-| **Total runnable** | **317** | **All passing** |
+| Fuzz tests (`zig build test-fuzz`) | 12 | Passing (Zig 0.16 Smith API; GAP-0020; +2 Range targets, ATX-06) |
+| **Total runnable** | **322** | **All passing (1 skip)** |
 
-## Open Gaps (as of 2026-04-18, post-5th-pass)
+## Open Gaps (as of 2026-06-11, post audit-iteration-1)
 
-Open count: **5** (0 Critical, 2 High, 1 Medium, 2 Low). Closed items are in
+Open count: **4** (0 Critical, 1 High, 1 Medium, 2 Low). Closed items are in
 [GAP_ANALYSIS_RESOLVED.md](GAP_ANALYSIS_RESOLVED.md). Every remaining item is
 **Blocked on an external dependency** (downstream repo or runner provisioning).
+GAP-0019's tracker issue [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23)
+was closed on GitLab 2026-04-18 as infra-blocked; the row below is retained
+for the record because the CI matrix jobs remain `when: manual` until runners
+are provisioned.
 
 | Gap-ID | Finding | Severity | Status | Category | Issue |
 |--------|---------|----------|--------|----------|-------|
@@ -89,7 +93,7 @@ Open count: **5** (0 Critical, 2 High, 1 Medium, 2 Low). Closed items are in
 | GAP-0015 | DateRange deferred — blocked on datetime package | Low | Blocked (external — datetime package) | Feature | [#8](https://gitlab.com/devnw/zig/advanced-types/-/issues/8) |
 | GAP-0016 | Geographic `st_*` helpers staged for future release | Low | Blocked (feature-scope decision; query layer) | Feature | [#14](https://gitlab.com/devnw/zig/advanced-types/-/issues/14) |
 | GAP-0017 | Port Geode integration tests for type consumption | Medium | Blocked (external — Geode repo; GAP-0014 precedes) | Test | [#16](https://gitlab.com/devnw/zig/advanced-types/-/issues/16) |
-| GAP-0019 | AT-NFR-003 — CI cross-platform runners dormant | High | Blocked (infra — CI matrix jobs scaffolded but `when: manual` until runners provisioned) | CI/CD | [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) |
+| GAP-0019 | AT-NFR-003 — CI cross-platform runners dormant | High | Closed on GitLab (infra-blocked; CI matrix jobs remain `when: manual`) — issue #23 closed 2026-04-18 | CI/CD | [#23](https://gitlab.com/devnw/zig/advanced-types/-/issues/23) |
 
 ### GAP-0014: Wire Geode to consume types from this package
 

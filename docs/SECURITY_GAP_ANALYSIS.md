@@ -1,6 +1,23 @@
 # Security Gap Analysis
 
-Last updated: 2026-04-18 (post 5th Gap Closure Pass, HEAD `5df73d3`)
+Last updated: 2026-06-11 (post appsec review + audit-iteration-1 fixes, branch `audit/iteration-1-fixes`)
+
+## 2026-06-11 appsec review (ATX-01..08)
+
+Full report: [APPSEC_REVIEW_2026-06-11.md](APPSEC_REVIEW_2026-06-11.md).
+Eight findings (ATX-01..08); seven Closed on branch `audit/iteration-1-fixes`,
+one Accepted with compensating controls.
+
+| # | Finding | Disposition | Evidence / Commit |
+|---|---------|-------------|-------------------|
+| ATX-01 | ci-catalog components included via floating `@v1.x` tags | **Accepted** — org-policy decision: tag pinning is handled at the ci-catalog layer; compensating control: the catalog lives in the same GitLab org under the same access controls. **OPEN QUESTION for platform-ops:** are ci-catalog tags protected/immutable? | `docs/audit/gap-close-blockers.md`; supersedes-consistent with CI-CAT-01 / [#47](https://gitlab.com/devnw/zig/advanced-types/-/issues/47) |
+| ATX-02 | CI Zig toolchain fetched without a committed digest (TOFU per pipeline) | **Closed** — committed `ci/zig-sha256.lock`; install verifies against the locked SHA-256 | `61d36aa` |
+| ATX-03 | `release-sign-tag` could fail open (unsigned tag still released) | **Closed** — job fails closed and asserts the signed tag points at the pipeline commit | `fcc1ec5` |
+| ATX-04 | `root.zig` version constant drifted from `build.zig.zon` (0.1.0 vs 0.1.2) | **Closed** — synced to 0.1.2 plus build-time drift guard | `291b8b8`, `ca1a38e` |
+| ATX-05 | SECURITY.md pointed reporters at "GitHub issues"; no in-platform confidential channel | **Closed** — GitLab wording + confidential-issue reporting path | `02ac589` |
+| ATX-06 | Range parsers had no fuzz coverage | **Closed** — `IntRange`/`UintRange` fuzz targets added (`Range.parse` is integer-only; `FloatRange` has no parse path) | `9ceea0f` |
+| ATX-07 | `detect_diamond_deps.py` used the package hash in a filesystem path without charset validation | **Closed** — hash-charset guard before path use | `acdc181` |
+| ATX-08 | `isSafeForOutboundFetch` intent (SSRF gate, not routability) under-documented at call-site granularity | **Closed** — intent doc comments | `8d8772d` |
 
 ## Threat Model Summary
 
