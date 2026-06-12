@@ -57,10 +57,14 @@ pub const Mac = struct {
 
     /// Write this address in uppercase colon-separated hex notation to the given writer.
     pub fn format(self: Self, writer: anytype) !void {
-        for (self.octets, 0..) |byte, i| {
-            if (i > 0) try writer.writeByte(':');
-            try writer.print("{X:0>2}", .{byte});
+        const hex_digits = "0123456789ABCDEF";
+        var buf: [17]u8 = undefined;
+        inline for (0..6) |i| {
+            if (i > 0) buf[i * 3 - 1] = ':';
+            buf[i * 3] = hex_digits[self.octets[i] >> 4];
+            buf[i * 3 + 1] = hex_digits[self.octets[i] & 0x0F];
         }
+        try writer.writeAll(&buf);
     }
 
     /// Returns true if both MAC addresses have identical octets.
