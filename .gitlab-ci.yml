@@ -70,6 +70,9 @@ stages:
       rm -f "${INDEX_FILE}"
       curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${TARBALL}" -o "${TARBALL}"
       echo "${EXPECTED_HASH}  ${TARBALL}" | sha256sum --check --strict
+      # ATX-02: also verify against the committed lock so a compromised
+      # ziglang.org index cannot silently swap the toolchain.
+      grep " ${TARBALL}$" ci/zig-sha256.lock | sha256sum -c - || { echo "Zig tarball failed committed-hash verification (ci/zig-sha256.lock)"; exit 1; }
       tar -xJf "${TARBALL}"
       mv "${ARCHIVE_NAME}" "zig-${ZIG_VERSION}"
       rm -f "${TARBALL}"
@@ -282,6 +285,9 @@ test-macos:
         rm -f "${INDEX_FILE}"
         curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/${TARBALL}" -o "${TARBALL}"
         echo "${EXPECTED_HASH}  ${TARBALL}" | shasum -a 256 --check --strict
+        # ATX-02: also verify against the committed lock so a compromised
+        # ziglang.org index cannot silently swap the toolchain.
+        grep " ${TARBALL}$" ci/zig-sha256.lock | shasum -a 256 -c - || { echo "Zig tarball failed committed-hash verification (ci/zig-sha256.lock)"; exit 1; }
         tar -xJf "${TARBALL}"
         mv "${ARCHIVE_NAME}" "zig-${ZIG_VERSION}"
         rm -f "${TARBALL}"
@@ -328,6 +334,14 @@ test-windows:
         \$actual = (Get-FileHash -Algorithm SHA256 \$zipName).Hash.ToLower()
         if (\$actual -ne \$expected.ToLower()) {
           throw \"SHA-256 mismatch: expected \$expected actual \$actual\"
+        }
+        # ATX-02: also verify against the committed lock so a compromised
+        # ziglang.org index cannot silently swap the toolchain.
+        \$lockLine = Select-String -Path 'ci/zig-sha256.lock' -Pattern ('  ' + [regex]::Escape(\$zipName) + '\$') | Select-Object -First 1
+        if (-not \$lockLine) { throw \"\$zipName not found in ci/zig-sha256.lock\" }
+        \$lockHash = (\$lockLine.Line -split ' ')[0].ToLower()
+        if (\$actual -ne \$lockHash) {
+          throw \"Zig archive failed committed-hash verification (ci/zig-sha256.lock): expected \$lockHash actual \$actual\"
         }
         Expand-Archive \$zipName -DestinationPath . -Force
         Remove-Item \$zipName, index.json
