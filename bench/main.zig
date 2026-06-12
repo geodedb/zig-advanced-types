@@ -286,6 +286,8 @@ fn roundSubnetContains() !u64 {
     for (0..iterations_per_round) |i| {
         // Re-materialize the input each iteration so LLVM cannot hoist the
         // membership tests out of the loop or collapse them to a closed form.
+        // Trade-off: the measured ns/op includes this opacity barrier's
+        // store/reload (~1 ns), not just the bare contains() cost.
         var addr = addrs[i % addrs.len];
         std.mem.doNotOptimizeAway(&addr);
         sink +%= if (net.contains(addr)) 1 else 0;
