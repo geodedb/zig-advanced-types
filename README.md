@@ -22,7 +22,7 @@ Add to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .advanced_types = .{
-        .url = "https://gitlab.com/devnw/zig/advanced-types/-/archive/v0.1.2/advanced-types-v0.1.2.tar.gz",
+        .url = "https://gitlab.com/devnw/zig/advanced-types/-/archive/v0.1.3/advanced-types-v0.1.3.tar.gz",
         .hash = "...",
     },
 },

@@ -14,7 +14,7 @@ const lib = @import("advanced_types");
 // ============================================================================
 
 test "integration: version is defined" {
-    try std.testing.expectEqualStrings("0.1.2", lib.version);
+    try std.testing.expectEqualStrings("0.1.3", lib.version);
 }
 
 test "integration: all public types are accessible" {

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-12
+
 ### Changed
 
 - `Subnet.parse` now returns `error.InvalidPrefix` (was `error.Overflow`) for
@@ -46,4 +48,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `detect_diamond_deps.py` validates the package-hash charset before using it
   in a filesystem path
 
-[Unreleased]: https://gitlab.com/devnw/zig/advanced-types/-/compare/main...HEAD
+[Unreleased]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.3...HEAD
+[0.1.3]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.2...v0.1.3
