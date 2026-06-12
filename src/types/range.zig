@@ -184,7 +184,10 @@ pub fn Range(comptime T: type) type {
             const type_info = @typeInfo(T);
             switch (type_info) {
                 .int => {
-                    // Guard against overflow at type boundaries.
+                    // Guard against overflow at type boundaries. Checking
+                    // upper < maxInt before +1 (rather than @addWithOverflow)
+                    // keeps adjacent() cheap and branch-predictable; at the
+                    // type boundary nothing can be adjacent-above anyway.
                     const a_adj = if (a.upper < math.maxInt(T)) a.upper + 1 == b.lower else false;
                     const b_adj = if (b.upper < math.maxInt(T)) b.upper + 1 == a.lower else false;
                     return a_adj or b_adj;

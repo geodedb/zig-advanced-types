@@ -388,6 +388,9 @@ pub const Url = struct {
 
     /// Return the effective port: the explicit port if present, otherwise the
     /// default port for the scheme (80 for http, 443 for https).
+    /// Returns 0 for schemes with no known default. Caution: 0 is also a
+    /// legal explicit port (`host:0` parses), so a 0 result is ambiguous --
+    /// check `self.port != null` to distinguish "explicit 0" from "no default".
     pub fn effectivePort(self: Url) u16 {
         if (self.port) |p| return p;
         if (std.ascii.eqlIgnoreCase(self.scheme, "https")) return 443;

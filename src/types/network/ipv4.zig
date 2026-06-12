@@ -133,6 +133,10 @@ pub const Ipv4Addr = struct {
     /// (RFC 1918), link-local (169.254/16), CGNAT (100.64/10), multicast
     /// (224/4), broadcast / unspecified (255.255.255.255 / 0.0.0.0), and
     /// reserved (240/4) ranges.
+    /// This is an SSRF-safety gate (internal-range rejection), NOT a
+    /// routability check: non-routable special-use ranges that cannot reach
+    /// internal services (TEST-NET-1/2/3 192.0.2.0/24, 198.51.100.0/24,
+    /// 203.0.113.0/24; benchmarking 198.18.0.0/15) are deliberately NOT rejected.
     pub fn isSafeForOutboundFetch(self: Self) bool {
         // 0.0.0.0/8 — "this network"; callers must not dial 0.0.0.0
         if (self.octets[0] == 0) return false;

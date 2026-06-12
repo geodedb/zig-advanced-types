@@ -112,7 +112,8 @@ pub const LatLon = struct {
         return .{ .lat = lat, .lon = lon };
     }
 
-    /// Create a `LatLon` without validation. Use only with trusted data.
+    /// Create a `LatLon` without validating latitude/longitude ranges or
+    /// rejecting NaN/Inf. Caller asserts validity; prefer `init`.
     pub fn initUnchecked(lat: f64, lon: f64) LatLon {
         return .{ .lat = lat, .lon = lon };
     }
@@ -249,7 +250,8 @@ pub const LatLonAlt = struct {
         return .{ .lat = lat, .lon = lon, .alt = alt };
     }
 
-    /// Create a `LatLonAlt` without validation. Use only with trusted data.
+    /// Create a `LatLonAlt` without validating lat/lon ranges or rejecting
+    /// NaN/Inf coordinates and altitude. Caller asserts validity; prefer `init`.
     pub fn initUnchecked(lat: f64, lon: f64, alt: f64) LatLonAlt {
         return .{ .lat = lat, .lon = lon, .alt = alt };
     }

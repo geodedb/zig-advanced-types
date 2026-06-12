@@ -245,13 +245,15 @@ pub const Ipv6Addr = struct {
     /// downcast to IPv4 and re-checked via `Ipv4Addr.isSafeForOutboundFetch`
     /// so attackers cannot smuggle a link-local IPv4 target behind an IPv6
     /// facade.
+    /// SSRF-safety gate, not a routability check -- see Ipv4Addr.isSafeForOutboundFetch.
     pub fn isSafeForOutboundFetch(self: Self) bool {
         if (self.isUnspecified()) return false;
         if (self.isLoopback()) return false;
         if (self.isLinkLocal()) return false;
         if (self.isUniqueLocal()) return false;
         if (self.isMulticast()) return false;
-        // IPv4-mapped: re-run the v4 predicate on the embedded v4 address.
+        // Re-check mapped addresses as IPv4 so ::ffff:<v4> forms (e.g. mapped
+        // 169.254.169.254) cannot bypass the v4 blocklist.
         if (self.toIpv4()) |v4| return v4.isSafeForOutboundFetch();
         return true;
     }

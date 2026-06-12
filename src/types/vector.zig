@@ -80,12 +80,14 @@ pub fn Vector(comptime T: type, comptime N: usize) type {
         /// the assert is compiled out and the behaviour is undefined
         /// (caller's contract). Use `get()` for a checked, null-returning
         /// variant that is safe under all release modes.
+        /// Prefer `get` when the index is not statically known to be in bounds.
         pub fn at(self: Self, index: usize) T {
             std.debug.assert(index < N);
             return self.data[index];
         }
 
         /// Returns the element at the given index, or null if out of bounds.
+        /// The non-asserting counterpart of `at`.
         pub fn get(self: Self, index: usize) ?T {
             if (index >= N) return null;
             return self.data[index];
@@ -144,6 +146,7 @@ pub fn Vector(comptime T: type, comptime N: usize) type {
         }
 
         /// Sum of squares of all elements. Works for both int and float types.
+        /// Integer overflow is safety-checked in Debug/ReleaseSafe (panics) and wraps in ReleaseFast/Small.
         pub fn magnitudeSquared(self: Self) T {
             return self.dot(self);
         }
