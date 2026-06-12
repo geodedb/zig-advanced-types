@@ -6,7 +6,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     // ATX-04 guard: fail the build if src/root.zig's `version` constant
     // drifts from build.zig.zon's `.version`.
-    checkVersionSync(b) catch |err| std.debug.panic("version sync check failed: {}", .{err});
+    checkVersionSync(b) catch |err| std.debug.panic("version sync check: I/O or parse failure: {s}", .{@errorName(err)});
 
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -169,6 +169,9 @@ fn checkVersionSync(b: *std.Build) !void {
 
 /// Return the slice of `haystack` between the first occurrence of `prefix`
 /// and the next occurrence of `suffix`, or null if either is absent.
+/// Limitation: matches the FIRST occurrence, so a commented-out
+/// `pub const version = "..."` line above the real declaration would be
+/// picked up instead — keep the version declarations unique in both files.
 fn extractBetween(haystack: []const u8, prefix: []const u8, suffix: []const u8) ?[]const u8 {
     const start = (std.mem.indexOf(u8, haystack, prefix) orelse return null) + prefix.len;
     const end = std.mem.indexOfPos(u8, haystack, start, suffix) orelse return null;
