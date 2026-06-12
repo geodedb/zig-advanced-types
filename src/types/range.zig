@@ -7,6 +7,7 @@
 //! formatting, and parsing. Works with any numeric or comparable type.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const math = std.math;
 const testing = std.testing;
 
@@ -576,6 +577,15 @@ test "FloatRange: valid float range still works" {
     const r = try Range(f64).init(1.0, 2.0);
     try testing.expectEqual(@as(f64, 1.0), r.lower);
     try testing.expectEqual(@as(f64, 2.0), r.upper);
+}
+
+test "Range.span wraps at integer boundary in ReleaseFast/Small (Q35, SAST-OVERFLOW-01)" {
+    // span() = upper - lower; safety-checked modes panic on overflow, which
+    // a test cannot catch -- only assert the documented wrap in unsafe modes.
+    if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) return error.SkipZigTest;
+    const r = IntRange.initUnchecked(math.minInt(i64), math.maxInt(i64));
+    const wrapped = r.span(); // maxInt - minInt wraps to -1 in two's complement
+    try testing.expectEqual(@as(i64, -1), wrapped);
 }
 
 test "Range(i32).parse rejects oversized input (SAST-DOS-01)" {

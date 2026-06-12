@@ -11,6 +11,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // Q34: `-Dtest-filter="name substring"` narrows every test suite to
+    // tests whose names contain the string. Repeatable; empty = run all.
+    const test_filters = b.option([]const []const u8, "test-filter", "Only run tests whose names contain this string (repeatable)") orelse &.{};
+
     // Main library module
     const module = b.addModule("advanced_types", .{
         .root_source_file = b.path("src/root.zig"),
@@ -21,6 +25,7 @@ pub fn build(b: *std.Build) void {
     // Unit tests (run tests defined in the module itself)
     const test_step = b.step("test", "Run unit tests");
     const unit_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
             .target = target,
@@ -33,6 +38,7 @@ pub fn build(b: *std.Build) void {
     // Integration tests (separate test file with module import)
     const integration_step = b.step("test-integration", "Run integration tests");
     const integration_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/integration.zig"),
             .target = target,
@@ -48,6 +54,7 @@ pub fn build(b: *std.Build) void {
     // Type-extension tests (cross-feature type-extension coverage)
     const extensions_step = b.step("test-extensions", "Run type-extension tests");
     const extensions_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/type_extensions.zig"),
             .target = target,
@@ -63,6 +70,7 @@ pub fn build(b: *std.Build) void {
     // Fuzz tests (exercise parsers with arbitrary input)
     const fuzz_step = b.step("test-fuzz", "Run fuzz tests");
     const fuzz_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/fuzz.zig"),
             .target = target,
@@ -79,6 +87,7 @@ pub fn build(b: *std.Build) void {
     // duplication, URL userinfo, Subnet prefix boundaries).
     const parser_edges_step = b.step("test-parser-edges", "Run parser edge-case regression tests");
     const parser_edges_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/parser_edge_cases.zig"),
             .target = target,
@@ -94,6 +103,7 @@ pub fn build(b: *std.Build) void {
     // Performance tests (dataset-level workflows and bulk operations)
     const performance_step = b.step("test-performance", "Run performance tests");
     const performance_tests = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/performance.zig"),
             .target = target,
@@ -143,6 +153,7 @@ pub fn build(b: *std.Build) void {
     // Check step for IDE integration (fast syntax validation)
     const check_step = b.step("check", "Check for compilation errors");
     const check = b.addTest(.{
+        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
             .target = target,
