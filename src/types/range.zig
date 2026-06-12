@@ -580,8 +580,10 @@ test "FloatRange: valid float range still works" {
 }
 
 test "Range.span wraps at integer boundary in ReleaseFast/Small (Q35, SAST-OVERFLOW-01)" {
-    // span() = upper - lower; safety-checked modes panic on overflow, which
-    // a test cannot catch -- only assert the documented wrap in unsafe modes.
+    // span() = upper - lower; safety-checked modes trap the overflow with a
+    // panic that would abort this test runner, so they are skipped here. In
+    // ReleaseFast/ReleaseSmall the subtraction wraps with two's-complement
+    // semantics, producing -1 -- the documented behavior under test.
     if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) return error.SkipZigTest;
     const r = IntRange.initUnchecked(math.minInt(i64), math.maxInt(i64));
     const wrapped = r.span(); // maxInt - minInt wraps to -1 in two's complement

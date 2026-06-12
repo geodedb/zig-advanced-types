@@ -152,8 +152,9 @@ pub fn build(b: *std.Build) void {
 
     // Check step for IDE integration (fast syntax validation)
     const check_step = b.step("check", "Check for compilation errors");
+    // No .filters here: check is compile-only (no addRunArtifact), so test
+    // filters would be silently ignored anyway.
     const check = b.addTest(.{
-        .filters = test_filters,
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/root.zig"),
             .target = target,
