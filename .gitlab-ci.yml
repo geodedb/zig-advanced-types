@@ -225,6 +225,14 @@ test-parser-edges:
 bench:
   stage: test
   image: debian:bookworm-slim
+  # CI-BENCH-01: the company runner pool is performance-heterogeneous
+  # (OVH dedicated vs Lab Servers differ ~2.5x), so a static baseline can
+  # only gate one class. Pin bench to the dedicated x86 (OVH) class --
+  # bench/baseline.json envelope values cover that class incl. loaded runs.
+  tags:
+    - company
+    - linux
+    - dedicated
   before_script:
     - *install-zig
   script:
