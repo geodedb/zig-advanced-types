@@ -6,7 +6,7 @@ Last updated: 2026-06-11 (post 6th pass / audit iteration 1, branch `audit/itera
 
 | Status | Count |
 |--------|-------|
-| Closed — historical Q1–Q13 | 10 (8 closed, 2 Won't-Do) |
+| Closed — historical Q1–Q13 | 13 (12 closed incl. Q9 via Q45, 1 Won't-Do: Q12) |
 | Closed 4th pass (Q15, Q17, Q25, Q26, Q30, Q31, Q33, Q36) | 8 |
 | **Closed 5th pass (Q16, Q18, Q19, Q20, Q32, Q42, Q43, Q44, Q45, Q46)** | **10** |
 | **Closed 6th pass (Q27, Q29, Q34, Q35, Q37, Q41)** | **6** |

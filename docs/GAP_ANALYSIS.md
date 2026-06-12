@@ -147,18 +147,18 @@ are provisioned.
 - **Severity:** High
 - **Requirement source:** `docs/audit/gap-requirements.md` AT-NFR-003; README cross-platform claim.
 - **Current state (evidence):** `.gitlab-ci.yml` carries macOS / Windows / aarch64 jobs with `rules: when: manual` and `allow_failure: true` (commits `505fe43`, `aa31b0d`, `7431a67`); SHA-256 verification parity with Linux now in place. No runners provisioned.
-- **Blocker:** Infra — the `company` runner pool does not expose `macos`, `windows`, or `aarch64` tags yet. This is a platform-ops task, not a repository change.
+- **Blocker:** Infra — the pool's `macos` runners are stale and there is no Windows runner with the toolchain; ARM Linux runners exist (tagged `arm64` — the job now targets that tag per CI-SCHED-02). This is a platform-ops task, not a repository change.
 - **Unblock steps:**
-  1. Register runners tagged `macos`, `windows`, `aarch64` in the group runner pool.
+  1. Provision/refresh runners tagged `macos`, `windows`, `arm64` in the group runner pool.
   2. Verify Zig 0.16.0 install paths per target.
   3. Remove `rules: when: manual` once green; drop `allow_failure: true` once stable.
 - **Acceptance criteria:** Cross-platform jobs pass on main without `allow_failure`.
 
 ## Related Audit Documents
 
-- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 18 closed + 10 closed this pass, 3 accepted, 11 ledger-only
-- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — 8 closed (3 Fix, 5 Monitor-verified), 11 won't-do
-- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — 17 closed, 4 accepted, 1 won't-do
+- [QUALITY_GAP_ANALYSIS.md](QUALITY_GAP_ANALYSIS.md) — 47 closed/resolved (incl. 6 Q + 5 N closed 6th pass), 4 accepted, 4 open ledger-only (Q14, Q28, Q39, Q40)
+- [PERF_GAP_ANALYSIS.md](PERF_GAP_ANALYSIS.md) — all closed (incl. P1–P6 on 2026-06-11); 0 open Fix, 0 open Monitor
+- [SECURITY_GAP_ANALYSIS.md](SECURITY_GAP_ANALYSIS.md) — all closed/accepted; 2026-06-11 appsec pass ATX-02..08 closed, ATX-01 accepted
 
 ## Acceptance Criteria
 
