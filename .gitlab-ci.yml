@@ -4,7 +4,12 @@
 
 default:
   tags:
+    # CI-SCHED-01: 'company' alone also matches the Hosted Windows Runners,
+    # which executed these bash scripts under PowerShell and failed the
+    # 2026-05-02 main/v0.1.2 pipelines. Pin default (bash/docker) jobs to
+    # Linux runners; the cross-platform jobs override tags explicitly.
     - company
+    - linux
 
 include:
   # Security scanning
@@ -377,7 +382,9 @@ test-linux-aarch64:
   stage: test
   image: debian:bookworm-slim
   tags:
-    - aarch64
+    # CI-SCHED-02: the ARM lab runners advertise 'arm64' (not 'aarch64').
+    - linux
+    - arm64
   before_script:
     - *install-zig
   script:
