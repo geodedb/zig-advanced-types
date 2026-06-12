@@ -11,8 +11,8 @@ branch `audit/iteration-1-fixes`:
 | P-ID | Finding | Resolution | Commit |
 |------|---------|------------|--------|
 | P1 | Constant-input benchmark loops were hoisting-tainted — `Subnet.contains` and `cosineDistance` measured fully hoisted code; haversine numbers had weak semantics | De-hoisted via opaque per-iteration inputs (power-of-two corpora; opacity-barrier cost trade-off documented inline) | `66f969c`, `f7f1e38`, `a2966a2` |
-| P2 | Baselines stale after de-hoist | Full re-baseline of all 12 benchmarks in `bench/baseline.json` | `0fcd591` |
-| P3 | Baseline metric comment described the wrong statistic | Metric description corrected | `0fcd591` |
+| P2 | Baselines stale after de-hoist | Full re-baseline of all 12 benchmarks in `bench/baseline.json`. As executed: max-envelope across 10+ mixed-load runs (not the plan's median-of-3, which flapped — inter-run min-of-N spread is 4–69% on the shared host, exceeding the 30% one-sided tolerance) | `0fcd591`, `e24eca7` |
+| P3 | Baseline metric comment described the wrong statistic | Metric description corrected (final wording documents the max-envelope methodology) | `0fcd591`, `e24eca7` |
 | P4 | `Mac.format` dispatched 6 `std.fmt` calls per address | Single-buffer `writeAll`; ~6.7 ns/op vs 57.4 ns/op prior baseline (~8x) | `2c099a1` |
 | P5 | No parse benchmarks for `LatLonAlt` / `GeoPoint` | Benches added | `34f8115` |
 | P6 | CI installed python3 twice in the release job | Duplicate install removed | `fcc1ec5` |
@@ -82,7 +82,7 @@ The CI bench regression gate in `ci/bench_gate.py` + `bench/baseline.json` locks
 | IPADDR-01 | 32 | `IpAddr.parse` pre-scan doubles byte traversals on IPv6 | Below noise floor | `27f8414` / [#63](https://gitlab.com/devnw/zig/advanced-types/-/issues/63) |
 | S3 | 32 | No `@Vector(16, f32)` tiled cosine at N >= 16 | Requires consumer at N >= 16; Geode (only consumer) uses N = 3. No signal yet. | `27f8414` / [#64](https://gitlab.com/devnw/zig/advanced-types/-/issues/64) |
 
-### Bench table at close (317 tests; `python3 ci/bench_gate.py` → all 10 benchmarks within 1.30× tolerance)
+### Bench table at close of 5th pass (317 tests then; 322 now; `python3 ci/bench_gate.py` → all benchmarks within 1.30× tolerance — 10 benchmarks at the time, 12 as of 2026-06-11)
 
 - Worst case `Ipv4Addr.parse`: 13.85 vs 13.76 ns baseline (+0.6 %, noise).
 - No benchmark > 30 % slower than baseline.

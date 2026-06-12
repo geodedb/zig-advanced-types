@@ -438,6 +438,8 @@ Run `zig build bench -Doptimize=ReleaseFast` three times; from each run's `BENCH
 
 - [ ] **Step 2: Rewrite baseline.json** — for each of the 12 benchmarks take the **median of the three min-of-N values** and write:
 
+NOTE (as executed): median-of-3 flapped (4–69% inter-run min-of-N spread on the shared host vs a 30% one-sided gate); the committed baseline uses the max-envelope across 10+ mixed-load runs — see `bench/baseline.json` `_comment` and commit `e24eca7`.
+
 ```json
 {
   "_comment": "BENCH-02 (#58) regression-gate baseline. Each value is the median across three fresh ReleaseFast runs of the per-run min-of-N ns/op taken from the BENCH_JSON payload (the same metric ci/bench_gate.py compares). Re-baselined 2026-06-11 after de-hoisting the Subnet.contains/cosineDistance/haversine loops (P1) — pre-2026-06-11 values were partially hoisting-tainted and uniformly stale. Tolerance stays 30% because intra-run jitter on shared hardware measured 11-17%. Re-baseline with `zig build bench -Doptimize=ReleaseFast` (3 runs, median of min-of-N) on the same host and update these values.",
