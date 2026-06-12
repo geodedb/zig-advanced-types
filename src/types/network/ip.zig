@@ -31,7 +31,10 @@ pub const IpAddr = union(enum) {
 
     const Self = @This();
 
-    /// Parse an IP address, auto-detecting IPv4 vs IPv6 by the presence of colons.
+    /// Parse an IP address, auto-detecting IPv4 vs IPv6 by the presence of
+    /// colons: any input containing `:` is routed to the IPv6 parser,
+    /// everything else to the IPv4 parser. Consequence: a malformed input
+    /// containing a colon fails with IPv6-parser errors, never IPv4 ones.
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
         if (input.len > MAX_IP_INPUT) return error.InputTooLong;
@@ -68,6 +71,34 @@ pub const IpAddr = union(enum) {
                 .v6 => |o6| return s6.eql(o6),
             },
         }
+    }
+
+    /// Returns true if this is a loopback address (127.0.0.0/8 or ::1).
+    pub fn isLoopback(self: Self) bool {
+        return switch (self) {
+            .v4 => |v4| v4.isLoopback(),
+            .v6 => |v6| v6.isLoopback(),
+        };
+    }
+
+    /// Returns true if this is a multicast address (224.0.0.0/4 or ff00::/8).
+    pub fn isMulticast(self: Self) bool {
+        return switch (self) {
+            .v4 => |v4| v4.isMulticast(),
+            .v6 => |v6| v6.isMulticast(),
+        };
+    }
+
+    /// SSRF-safety gate: returns true only if dialing this address cannot
+    /// reach loopback, link-local (incl. cloud metadata), private/CGNAT,
+    /// multicast, or otherwise internal ranges. Delegates to the family-
+    /// specific predicate (the IPv6 path re-checks IPv4-mapped addresses).
+    /// This is NOT a routability check; see the family methods for details.
+    pub fn isSafeForOutboundFetch(self: Self) bool {
+        return switch (self) {
+            .v4 => |v4| v4.isSafeForOutboundFetch(),
+            .v6 => |v6| v6.isSafeForOutboundFetch(),
+        };
     }
 };
 
@@ -117,6 +148,31 @@ test "IpAddr.eql" {
     try testing.expect(a.eql(b));
     try testing.expect(!a.eql(c));
     try testing.expect(!c.eql(a));
+}
+
+test "IpAddr forwards classification predicates (N2)" {
+    const lo4 = try IpAddr.parse("127.0.0.1");
+    const lo6 = try IpAddr.parse("::1");
+    try testing.expect(lo4.isLoopback());
+    try testing.expect(lo6.isLoopback());
+    try testing.expect(!lo4.isSafeForOutboundFetch());
+    try testing.expect(!lo6.isSafeForOutboundFetch());
+
+    const mc4 = try IpAddr.parse("224.0.0.1");
+    const mc6 = try IpAddr.parse("ff02::1");
+    try testing.expect(mc4.isMulticast());
+    try testing.expect(mc6.isMulticast());
+
+    const pub4 = try IpAddr.parse("93.184.216.34");
+    try testing.expect(pub4.isSafeForOutboundFetch());
+    try testing.expect(!pub4.isLoopback());
+    try testing.expect(!pub4.isMulticast());
+
+    // SSRF smuggling guard must survive union dispatch. The IPv6 parser
+    // does not accept dotted-v4 form inside v6 literals, so use the hex
+    // form of ::ffff:169.254.169.254 (cloud metadata endpoint).
+    const mapped = try IpAddr.parse("::ffff:a9fe:a9fe");
+    try testing.expect(!mapped.isSafeForOutboundFetch());
 }
 
 test "IpAddr.parse rejects oversized input (SAST-DOS-01)" {
