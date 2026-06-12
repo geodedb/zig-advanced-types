@@ -86,8 +86,14 @@ stages:
   - zig version
 
 # Override zig-format component to use the project's ZIG_VERSION.
-# The v1.2.1 component defaults to 0.14.0 and does not accept a version input.
+# The v1.2.1 component defaults to 0.14.0 and does not accept a version
+# input; it also pins ZIG_VERSION at JOB level, which beats the global
+# pipeline variable -- so the override must re-pin it here (CI-FMT-01;
+# first exposed when CI-SCHED-01 let this job actually run on Linux:
+# the ATX-02 lock check correctly failed closed on the unpinned 0.14.0).
 zig-format:
+  variables:
+    ZIG_VERSION: "0.16.0"
   before_script:
     - *install-zig
 
@@ -411,7 +417,10 @@ test-linux-aarch64:
 # ============================================================================
 coverage:
   stage: coverage
-  image: debian:bookworm-slim
+  # CI-COV-01: kcov is not packaged in Debian bookworm (dropped during the
+  # freeze); Ubuntu 24.04 universe carries it. Exposed when CI-SCHED-01
+  # let this stage actually run for the first time.
+  image: ubuntu:24.04
   before_script:
     - apt-get update
     - apt-get install -y kcov
