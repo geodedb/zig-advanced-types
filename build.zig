@@ -4,6 +4,10 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) void {
+    // ATX-04 guard: fail the build if src/root.zig's `version` constant
+    // drifts from build.zig.zon's `.version`.
+    checkVersionSync(b) catch |err| std.debug.panic("version sync check failed: {}", .{err});
+
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
@@ -146,4 +150,27 @@ pub fn build(b: *std.Build) void {
         }),
     });
     check_step.dependOn(&check.step);
+}
+
+/// ATX-04: verify that the `version` constant in src/root.zig matches the
+/// `.version` field in build.zig.zon. Panics with a drift message on
+/// mismatch so the build cannot proceed with inconsistent versions.
+fn checkVersionSync(b: *std.Build) !void {
+    const io = b.graph.io;
+    const cwd = std.Io.Dir.cwd();
+    const zon = try cwd.readFileAlloc(io, b.pathFromRoot("build.zig.zon"), b.allocator, .limited(1 << 16));
+    const root = try cwd.readFileAlloc(io, b.pathFromRoot("src/root.zig"), b.allocator, .limited(1 << 20));
+    const zon_ver = extractBetween(zon, ".version = \"", "\"") orelse return error.ZonVersionNotFound;
+    const root_ver = extractBetween(root, "pub const version = \"", "\"") orelse return error.RootVersionNotFound;
+    if (!std.mem.eql(u8, zon_ver, root_ver)) {
+        std.debug.panic("version drift: build.zig.zon has \"{s}\" but src/root.zig has \"{s}\"", .{ zon_ver, root_ver });
+    }
+}
+
+/// Return the slice of `haystack` between the first occurrence of `prefix`
+/// and the next occurrence of `suffix`, or null if either is absent.
+fn extractBetween(haystack: []const u8, prefix: []const u8, suffix: []const u8) ?[]const u8 {
+    const start = (std.mem.indexOf(u8, haystack, prefix) orelse return null) + prefix.len;
+    const end = std.mem.indexOfPos(u8, haystack, start, suffix) orelse return null;
+    return haystack[start..end];
 }
