@@ -11,7 +11,7 @@ Portable value types for network addresses, vectors, geographic coordinates, URL
 - **17 Public Types**: IP addresses, subnets, MACs, vectors, coordinates, URLs, domains, ranges
 - **Zero Allocation**: All types are stack-allocated value types
 - **Cross-Platform**: Linux, macOS, Windows, aarch64 support
-- **304 Tests**: Comprehensive unit, integration, type-extension, parser-edges, performance, and fuzz tests (all suites green on Zig 0.16.0)
+- **322 Tests**: Comprehensive unit, integration, type-extension, parser-edges, performance, and fuzz tests (all suites green on Zig 0.16.0)
 
 ## Installation
 
@@ -22,7 +22,7 @@ Add to your `build.zig.zon`:
 ```zig
 .dependencies = .{
     .advanced_types = .{
-        .url = "https://gitlab.com/devnw/zig/advanced-types/-/archive/v0.1.0/advanced-types-v0.1.0.tar.gz",
+        .url = "https://gitlab.com/devnw/zig/advanced-types/-/archive/v0.1.2/advanced-types-v0.1.2.tar.gz",
         .hash = "...",
     },
 },
@@ -37,6 +37,20 @@ const advanced_types = b.dependency("advanced_types", .{
 });
 exe.root_module.addImport("advanced_types", advanced_types.module("advanced_types"));
 ```
+
+## API Overview
+
+| Type | Key methods | Contract notes |
+| ---- | ----------- | -------------- |
+| `Ipv4Addr` / `Ipv6Addr` | `parse`, `format`, `eql`, `isLoopback`, `isMulticast`, `isSafeForOutboundFetch` | `isSafeForOutboundFetch` is an SSRF gate (rejects loopback/private/link-local/CGNAT/multicast/reserved), not a routability check |
+| `IpAddr` | `parse`, `format`, `eql`, `isLoopback`, `isMulticast`, `isSafeForOutboundFetch` | Tagged union over v4/v6; `parse` dispatches on `:`; classification methods forward to the active variant |
+| `Subnet` | `parse`, `init`, `contains`, `format`, `eql` | `parse`/`init` return `error.InvalidPrefix` for out-of-range prefix; `contains` is defensive (mixed v4/v6 or out-of-range prefix returns `false` rather than panicking) |
+| `Mac` | `parse`, `format`, `eql`, `isBroadcast`, `isMulticast`, `isLocallyAdministered` | Accepts `:` and `-` separators; formats uppercase colon-separated |
+| `Url` | `parse`, `effectivePort`, `domain`, `eql`, `format` | `effectivePort` returns `0` as a no-known-default sentinel for unknown schemes; component slices borrow the input buffer (caller owns lifetime) |
+| `Domain` | `parse`, `labels`, `tld`, `registeredDomain`, `eql`, `format` | ASCII-only per RFC 952/1123; IDN/Punycode out of scope (see SECURITY.md) |
+| `LatLon` / `LatLonAlt` / `GeoPoint` | `parse`, `init`, `eql`, `haversineDistance`, `haversineBroadcast` / `HaversineOrigin` | `init` validates coordinate ranges; `HaversineOrigin` precomputes the origin for one-to-many distance loops |
+| `Vector(T, N)` / `VectorF32` | `init`, `at`, `get`, `add`, `sub`, `scale`, `dot`, `magnitude`, `normalize`, `distance`, `cosineDistance`, `parse`, `format` | `at` asserts bounds (panics in safe modes); `get` returns `?T`; integer arithmetic wraps in ReleaseFast/ReleaseSmall (see below) |
+| `Range(T)` / `IntRange` / `UintRange` / `FloatRange` | `init`, `contains`, `containsRange`, `overlaps`, `intersection`, `union_`, `span`, `parse`, `format` | `init` validates `lower <= upper`; `span` can wrap on extreme integer ranges in unsafe modes (see below); `parse` supports integer element types only |
 
 ## Quick Start
 

@@ -8,9 +8,11 @@
 
 ## Reporting a Vulnerability
 
-**Please do not report security vulnerabilities through public GitHub issues.**
+**Please do not report security vulnerabilities through public GitLab issues.**
 
 Instead, please report them via email to: <security@codepros.dev>
+
+Alternatively, open a [confidential issue](https://gitlab.com/devnw/zig/advanced-types/-/issues/new?issue[confidential]=true) on the GitLab project.
 
 Please include:
 
