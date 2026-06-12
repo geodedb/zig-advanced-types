@@ -188,12 +188,18 @@ fn roundUrlParse() !u64 {
 }
 
 fn roundCosineDistance() !u64 {
-    const a = lib.VectorF32.init(.{ 1.0, 0.0, 0.0 });
-    const b = lib.VectorF32.init(.{ 0.9, 0.1, 0.02 });
+    var pairs = [_][2]lib.VectorF32{
+        .{ lib.VectorF32.init(.{ 1.0, 0.0, 0.0 }), lib.VectorF32.init(.{ 0.9, 0.1, 0.02 }) },
+        .{ lib.VectorF32.init(.{ 0.5, 0.5, 0.5 }), lib.VectorF32.init(.{ -0.5, 0.5, 0.25 }) },
+        .{ lib.VectorF32.init(.{ 3.0, -2.0, 1.0 }), lib.VectorF32.init(.{ 1.0, 1.0, 1.0 }) },
+        .{ lib.VectorF32.init(.{ 0.1, 0.2, 0.3 }), lib.VectorF32.init(.{ 0.3, 0.2, 0.1 }) },
+    };
+    std.mem.doNotOptimizeAway(&pairs);
     const t0 = nowNs();
     var sink: f32 = 0.0;
-    for (0..iterations_per_round) |_| {
-        sink += a.cosineDistance(b);
+    for (0..iterations_per_round) |i| {
+        const p = pairs[i % pairs.len];
+        sink += p[0].cosineDistance(p[1]);
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
@@ -202,11 +208,17 @@ fn roundCosineDistance() !u64 {
 
 fn roundHaversine() !u64 {
     const sf = try lib.LatLon.init(37.7749, -122.4194);
-    const ny = try lib.LatLon.init(40.7128, -74.0060);
+    var dests = [_]lib.LatLon{
+        try lib.LatLon.init(40.7128, -74.0060),
+        try lib.LatLon.init(51.5074, -0.1278),
+        try lib.LatLon.init(-33.8688, 151.2093),
+        try lib.LatLon.init(35.6762, 139.6503),
+    };
+    std.mem.doNotOptimizeAway(&dests);
     const t0 = nowNs();
     var sink: f64 = 0.0;
-    for (0..iterations_per_round) |_| {
-        sink += sf.haversineDistance(ny);
+    for (0..iterations_per_round) |i| {
+        sink += sf.haversineDistance(dests[i % dests.len]);
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
@@ -259,18 +271,24 @@ fn roundMacFormat() !u64 {
 }
 
 fn roundSubnetContains() !u64 {
-    const net = try lib.Subnet.parse("192.168.1.0/24");
-    const addrs = [_]lib.IpAddr{
+    var net = try lib.Subnet.parse("192.168.1.0/24");
+    var addrs = [_]lib.IpAddr{
         try lib.IpAddr.parse("192.168.1.1"),
         try lib.IpAddr.parse("192.168.1.200"),
         try lib.IpAddr.parse("192.168.2.1"), // outside
         try lib.IpAddr.parse("10.0.0.1"), // outside
         try lib.IpAddr.parse("192.168.1.42"),
     };
+    std.mem.doNotOptimizeAway(&net);
+    std.mem.doNotOptimizeAway(&addrs);
     const t0 = nowNs();
     var sink: u32 = 0;
     for (0..iterations_per_round) |i| {
-        sink +%= if (net.contains(addrs[i % addrs.len])) 1 else 0;
+        // Re-materialize the input each iteration so LLVM cannot hoist the
+        // membership tests out of the loop or collapse them to a closed form.
+        var addr = addrs[i % addrs.len];
+        std.mem.doNotOptimizeAway(&addr);
+        sink +%= if (net.contains(addr)) 1 else 0;
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
@@ -305,7 +323,7 @@ fn roundHaversineBroadcast() !u64 {
     // 1-to-N sweep using the precomputed-origin helper. Mirrors the real
     // "distance from user to each POI" hot path this helper targets.
     const origin = try lib.LatLon.init(37.7749, -122.4194);
-    const dests = [_]lib.LatLon{
+    var dests = [_]lib.LatLon{
         try lib.LatLon.init(40.7128, -74.0060),
         try lib.LatLon.init(51.5074, -0.1278),
         try lib.LatLon.init(-33.8688, 151.2093),
@@ -315,6 +333,7 @@ fn roundHaversineBroadcast() !u64 {
         try lib.LatLon.init(-34.6037, -58.3816),
         try lib.LatLon.init(1.3521, 103.8198),
     };
+    std.mem.doNotOptimizeAway(&dests);
     const broadcast = origin.haversineBroadcast();
     const t0 = nowNs();
     var sink: f64 = 0.0;
