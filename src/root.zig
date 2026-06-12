@@ -31,7 +31,7 @@
 const std = @import("std");
 
 /// Library version
-pub const version = "0.1.3";
+pub const version = "0.1.4";
 
 // ============================================================================
 // Type modules

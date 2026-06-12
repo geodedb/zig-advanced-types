@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-06-12
+
+### Fixed
+
+- CI bench gate: baselines now cover observed CI runner values, and the bench
+  job is pinned to the dedicated x86 runner class (the company pool is
+  performance-heterogeneous, ~2.5x between classes) -- the v0.1.3 tag pipeline
+  failed its bench gate when scheduled onto the slower class.
+- CI coverage job uses the official `kcov/kcov` image (kcov is packaged in
+  neither Debian bookworm nor Ubuntu noble).
+
 ## [0.1.3] - 2026-06-12
 
 ### Changed
@@ -48,5 +59,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `detect_diamond_deps.py` validates the package-hash charset before using it
   in a filesystem path
 
-[Unreleased]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.3...HEAD
+[Unreleased]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.4...HEAD
+[0.1.4]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.3...v0.1.4
 [0.1.3]: https://gitlab.com/devnw/zig/advanced-types/-/compare/v0.1.2...v0.1.3
