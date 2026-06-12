@@ -345,6 +345,51 @@ fn roundHaversineBroadcast() !u64 {
     return elapsed;
 }
 
+fn roundLatLonAltParse() !u64 {
+    var inputs = [_][]const u8{
+        "(37.7749, -122.4194, 10.5)",
+        "(40.7128, -74.0060, 33.0)",
+        "(-33.8688, 151.2093, 58.0)",
+        "(35.6762, 139.6503, 40.0)",
+        "(51.5074, -0.1278, 11.0)",
+    };
+    std.mem.doNotOptimizeAway(&inputs);
+    const t0 = nowNs();
+    var sink: usize = 0;
+    for (0..iterations_per_round) |i| {
+        const p = try lib.LatLonAlt.parse(inputs[i % inputs.len]);
+        sink ^= @as(usize, @intFromFloat(@abs(p.alt)));
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
+fn roundGeoPointParse() !u64 {
+    // Mixed 2D/3D inputs so the comma-count dispatch is exercised evenly.
+    var inputs = [_][]const u8{
+        "(37.7749, -122.4194)",
+        "(40.7128, -74.0060, 33.0)",
+        "(51.5074, -0.1278)",
+        "(-33.8688, 151.2093, 58.0)",
+        "(35.6762, 139.6503)",
+        "(-23.5505, -46.6333, 760.0)",
+    };
+    std.mem.doNotOptimizeAway(&inputs);
+    const t0 = nowNs();
+    var sink: usize = 0;
+    for (0..iterations_per_round) |i| {
+        const p = try lib.GeoPoint.parse(inputs[i % inputs.len]);
+        sink ^= switch (p) {
+            .point_2d => |v| @as(usize, @intFromFloat(@abs(v.lat))),
+            .point_3d => |v| @as(usize, @intFromFloat(@abs(v.alt))),
+        };
+    }
+    const elapsed = nowNs() - t0;
+    std.mem.doNotOptimizeAway(sink);
+    return elapsed;
+}
+
 pub fn main() !void {
     const p = std.debug.print;
     p(
@@ -372,6 +417,8 @@ pub fn main() !void {
         try runRounds("VectorF32.cosineDistance", roundCosineDistance),
         try runRounds("LatLon.haversineDistance", roundHaversine),
         try runRounds("LatLon.haversineBroadcast", roundHaversineBroadcast),
+        try runRounds("LatLonAlt.parse", roundLatLonAltParse),
+        try runRounds("GeoPoint.parse", roundGeoPointParse),
     };
 
     for (results) |r| {
