@@ -9,11 +9,11 @@
     "Url.parse": 42.4431,
     "Ipv4Addr.format": 19.7350,
     "Mac.format": 6.6585,
-    "Subnet.contains": 1.5459,
+    "Subnet.contains": 1.3288,
     "VectorF32.cosineDistance": 2.3438,
     "LatLon.haversineDistance": 24.1308,
     "LatLon.haversineBroadcast": 24.4414,
-    "LatLonAlt.parse": 66.3232,
-    "GeoPoint.parse": 76.7207
+    "LatLonAlt.parse": 61.5929,
+    "GeoPoint.parse": 62.7436
   }
 }

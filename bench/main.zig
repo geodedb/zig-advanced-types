@@ -272,12 +272,18 @@ fn roundMacFormat() !u64 {
 
 fn roundSubnetContains() !u64 {
     var net = try lib.Subnet.parse("192.168.1.0/24");
+    // Corpus length is a power of two so `i % addrs.len` reduces to a mask
+    // (a non-power-of-two modulus would add a multiply-high sequence that is
+    // significant against the ~1.5 ns contains() signal).
     var addrs = [_]lib.IpAddr{
         try lib.IpAddr.parse("192.168.1.1"),
         try lib.IpAddr.parse("192.168.1.200"),
         try lib.IpAddr.parse("192.168.2.1"), // outside
         try lib.IpAddr.parse("10.0.0.1"), // outside
         try lib.IpAddr.parse("192.168.1.42"),
+        try lib.IpAddr.parse("192.168.1.99"),
+        try lib.IpAddr.parse("172.16.0.1"), // outside
+        try lib.IpAddr.parse("192.168.1.250"),
     };
     std.mem.doNotOptimizeAway(&net);
     std.mem.doNotOptimizeAway(&addrs);
@@ -348,19 +354,25 @@ fn roundHaversineBroadcast() !u64 {
 }
 
 fn roundLatLonAltParse() !u64 {
+    // Corpus length is a power of two so `i % inputs.len` reduces to a mask.
     var inputs = [_][]const u8{
         "(37.7749, -122.4194, 10.5)",
         "(40.7128, -74.0060, 33.0)",
         "(-33.8688, 151.2093, 58.0)",
         "(35.6762, 139.6503, 40.0)",
         "(51.5074, -0.1278, 11.0)",
+        "(-23.5505, -46.6333, 760.0)",
+        "(55.7558, 37.6173, 156.0)",
+        "(1.3521, 103.8198, 15.0)",
     };
     std.mem.doNotOptimizeAway(&inputs);
     const t0 = nowNs();
     var sink: usize = 0;
     for (0..iterations_per_round) |i| {
         const p = try lib.LatLonAlt.parse(inputs[i % inputs.len]);
-        sink ^= @as(usize, @intFromFloat(@abs(p.alt)));
+        // Fold both alt and lat so the optimizer sees a data-flow dependency
+        // on more than one parsed field.
+        sink ^= @as(usize, @intFromFloat(@abs(p.alt))) ^ @as(usize, @intFromFloat(@abs(p.lat)));
     }
     const elapsed = nowNs() - t0;
     std.mem.doNotOptimizeAway(sink);
@@ -369,6 +381,7 @@ fn roundLatLonAltParse() !u64 {
 
 fn roundGeoPointParse() !u64 {
     // Mixed 2D/3D inputs so the comma-count dispatch is exercised evenly.
+    // Corpus length is a power of two so `i % inputs.len` reduces to a mask.
     var inputs = [_][]const u8{
         "(37.7749, -122.4194)",
         "(40.7128, -74.0060, 33.0)",
@@ -376,6 +389,8 @@ fn roundGeoPointParse() !u64 {
         "(-33.8688, 151.2093, 58.0)",
         "(35.6762, 139.6503)",
         "(-23.5505, -46.6333, 760.0)",
+        "(55.7558, 37.6173)",
+        "(1.3521, 103.8198, 15.0)",
     };
     std.mem.doNotOptimizeAway(&inputs);
     const t0 = nowNs();
