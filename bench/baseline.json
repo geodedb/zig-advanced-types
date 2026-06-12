@@ -1,17 +1,19 @@
 {
-  "_comment": "BENCH-02 (#58) regression-gate baseline. Values are the median ns/op across three fresh ReleaseFast runs on the reporter's shared developer workstation (2026-04-18). The CI gate in ci/bench_gate.py fails a pipeline when the current min-of-N exceeds baseline * tolerance. Tolerance is deliberately loose (30%) because intra-run jitter on shared hardware measured 11-17% on the BENCH-01 harness; a tighter gate would flap. Re-baseline with `zig build bench -Doptimize=ReleaseFast` on the same host and copy the BENCH_JSON payload values here.",
+  "_comment": "BENCH-02 (#58) regression-gate baseline. Each value is the median across three fresh ReleaseFast runs of the per-run min-of-N ns/op taken from the BENCH_JSON payload (the same metric ci/bench_gate.py compares). Re-baselined 2026-06-11 after de-hoisting the Subnet.contains/cosineDistance/haversine loops (P1) - pre-2026-06-11 values were partially hoisting-tainted and uniformly stale. Tolerance stays 30% because intra-run jitter on shared hardware measured 11-17%. Re-baseline with `zig build bench -Doptimize=ReleaseFast` (3 runs, median of min-of-N) on the same host and update these values.",
   "tolerance": 1.30,
   "units": "ns/op (min-of-N, N=9 rounds of 100000 iterations each)",
   "benchmarks": {
-    "Ipv4Addr.parse": 13.76,
-    "Ipv6Addr.parse": 30.10,
-    "IpAddr.parse": 21.44,
-    "Url.parse": 65.03,
-    "Ipv4Addr.format": 31.22,
-    "Mac.format": 57.40,
-    "Subnet.contains": 2.28,
-    "VectorF32.cosineDistance": 0.91,
-    "LatLon.haversineDistance": 10.60,
-    "LatLon.haversineBroadcast": 53.24
+    "Ipv4Addr.parse": 8.0189,
+    "Ipv6Addr.parse": 18.3791,
+    "IpAddr.parse": 13.3223,
+    "Url.parse": 42.4431,
+    "Ipv4Addr.format": 19.7350,
+    "Mac.format": 6.6585,
+    "Subnet.contains": 1.5459,
+    "VectorF32.cosineDistance": 2.3438,
+    "LatLon.haversineDistance": 24.1308,
+    "LatLon.haversineBroadcast": 24.4414,
+    "LatLonAlt.parse": 66.3232,
+    "GeoPoint.parse": 76.7207
   }
 }
