@@ -96,8 +96,8 @@ test "Subnet.parse: prefix boundary cases" {
     _ = try lib.Subnet.parse("10.0.0.1/32");
     _ = try lib.Subnet.parse("::/0");
     _ = try lib.Subnet.parse("::1/128");
-    try std.testing.expectError(error.Overflow, lib.Subnet.parse("10.0.0.0/33"));
-    try std.testing.expectError(error.Overflow, lib.Subnet.parse("::/129"));
+    try std.testing.expectError(error.InvalidPrefix, lib.Subnet.parse("10.0.0.0/33"));
+    try std.testing.expectError(error.InvalidPrefix, lib.Subnet.parse("::/129"));
 }
 
 test "Subnet.contains: /0 v4 contains any v4 but not v6" {

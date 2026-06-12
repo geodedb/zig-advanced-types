@@ -48,6 +48,8 @@ pub const Subnet = struct {
     }
 
     /// Parse a CIDR subnet string (e.g., "192.168.1.0/24" or "2001:db8::/32").
+    /// Returns `error.InvalidPrefix` for an out-of-range prefix length,
+    /// matching `init`.
     pub fn parse(input: []const u8) ParseError!Self {
         if (input.len == 0) return error.InvalidFormat;
         if (input.len > MAX_SUBNET_INPUT) return error.InputTooLong;
@@ -67,7 +69,7 @@ pub const Subnet = struct {
         for (prefix_part) |ch| {
             if (ch < '0' or ch > '9') return error.InvalidCharacter;
             prefix_len = prefix_len * 10 + (ch - '0');
-            if (prefix_len > 128) return error.Overflow;
+            if (prefix_len > 128) return error.InvalidPrefix;
         }
 
         // Validate prefix length based on address family
@@ -75,7 +77,7 @@ pub const Subnet = struct {
             .v4 => 32,
             .v6 => 128,
         };
-        if (prefix_len > max_prefix) return error.Overflow;
+        if (prefix_len > max_prefix) return error.InvalidPrefix;
 
         return .{
             .network = network,
@@ -176,8 +178,9 @@ test "Subnet.parse invalid" {
     try testing.expectError(error.InvalidFormat, Subnet.parse(""));
     try testing.expectError(error.InvalidFormat, Subnet.parse("192.168.1.0"));
     try testing.expectError(error.InvalidFormat, Subnet.parse("192.168.1.0/"));
-    try testing.expectError(error.Overflow, Subnet.parse("192.168.1.0/33"));
-    try testing.expectError(error.Overflow, Subnet.parse("::1/129"));
+    try testing.expectError(error.InvalidPrefix, Subnet.parse("192.168.1.0/33"));
+    try testing.expectError(error.InvalidPrefix, Subnet.parse("::1/129"));
+    try testing.expectError(error.InvalidPrefix, Subnet.parse("192.168.1.0/999"));
     try testing.expectError(error.InvalidCharacter, Subnet.parse("192.168.1.0/abc"));
 }
 
