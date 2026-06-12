@@ -56,9 +56,7 @@ def run_bench() -> str:
         sys.exit(2)
 
     if result.returncode != 0:
-        sys.stderr.write(
-            f"error: `zig build bench` exited {result.returncode}\n"
-        )
+        sys.stderr.write(f"error: `zig build bench` exited {result.returncode}\n")
         sys.stderr.write(result.stdout)
         sys.stderr.write(result.stderr)
         sys.exit(2)
@@ -100,9 +98,7 @@ def load_baseline(path: pathlib.Path) -> tuple[dict[str, float], float]:
         sys.exit(2)
     benchmarks = data.get("benchmarks")
     if not isinstance(benchmarks, dict):
-        sys.stderr.write(
-            f"error: baseline {path} missing 'benchmarks' object\n"
-        )
+        sys.stderr.write(f"error: baseline {path} missing 'benchmarks' object\n")
         sys.exit(2)
     tolerance = float(data.get("tolerance", 1.30))
     return {str(k): float(v) for k, v in benchmarks.items()}, tolerance
@@ -175,18 +171,12 @@ def main() -> int:
         status = "OK" if cur <= limit else "FAIL"
         if status == "FAIL":
             failures.append(name)
-        print(
-            f"{name:<32} {base:>12.2f} {cur:>12.2f} "
-            f"{limit:>12.2f} {status:>8}"
-        )
+        print(f"{name:<32} {base:>12.2f} {cur:>12.2f} {limit:>12.2f} {status:>8}")
 
     extras = sorted(set(current) - set(baseline))
     for name in extras:
         # New benchmarks are not a failure; they just aren't gated yet.
-        print(
-            f"{name:<32} {'--':>12} {current[name]:>12.2f} "
-            f"{'--':>12} {'NEW':>8}"
-        )
+        print(f"{name:<32} {'--':>12} {current[name]:>12.2f} {'--':>12} {'NEW':>8}")
 
     if missing:
         sys.stderr.write(
@@ -198,9 +188,7 @@ def main() -> int:
 
     if failures:
         sys.stderr.write(
-            "error: bench regression threshold exceeded: "
-            + ", ".join(failures)
-            + "\n"
+            "error: bench regression threshold exceeded: " + ", ".join(failures) + "\n"
         )
         return 1
 
