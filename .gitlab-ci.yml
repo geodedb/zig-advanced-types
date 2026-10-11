@@ -27,6 +27,8 @@ include:
 
   # Release
   - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.55.8
+    inputs:
+      release_auth: job_token
   - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.55.8
 
 variables:
@@ -230,10 +232,14 @@ bench:
   # (OVH dedicated vs Lab Servers differ ~2.5x), so a static baseline can
   # only gate one class. Pin bench to the dedicated x86 (OVH) class --
   # bench/baseline.json envelope values cover that class incl. loaded runs.
+  # SONNY-4830: dedicated also matches AWS Spot overflow. The docker/x86
+  # intersection selects the calibrated OVH pool and excludes that overflow.
   tags:
     - company
     - linux
     - dedicated
+    - docker
+    - x86
   before_script:
     - *install-zig
   script:
@@ -603,3 +609,13 @@ workflow:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: never
     - when: always
+
+# SONNY-4778: external hook tools must preserve the enclosing worktree.
+hook-env-regression:
+  stage: lint
+  image: python:3.14-slim-bookworm
+  tags: [company, linux, x86]
+  before_script:
+    - apt-get update -qq && apt-get install -y --no-install-recommends git
+  script:
+    - python3 scripts/test_hook_env.py
