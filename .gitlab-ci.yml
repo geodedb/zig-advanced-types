@@ -27,6 +27,8 @@ include:
 
   # Release
   - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.55.8
+    inputs:
+      release_auth: job_token
   - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.55.8
 
 variables:
