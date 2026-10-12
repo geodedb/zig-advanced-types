@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-12
+
+### Fixed
+
+- Route Linux coverage and release containers to x86 runners so amd64-only images start successfully. Existing platform-specific runner selections and benchmark budgets remain unchanged.
+
 ## [0.1.4] - 2026-06-12
 
 ### Fixed

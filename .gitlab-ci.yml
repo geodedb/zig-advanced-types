@@ -10,6 +10,8 @@ default:
     # Linux runners; the cross-platform jobs override tags explicitly.
     - company
     - linux
+    # The kcov and release images are amd64; Linux alone also matches ARM64.
+    - x86
 
 include:
   # Security scanning
@@ -633,3 +635,7 @@ test-source-package:
   needs:
     - build
   allow_failure: false
+
+# The release component supplies its own tags, overriding the default above.
+create-release:
+  tags: [company, linux, x86]
