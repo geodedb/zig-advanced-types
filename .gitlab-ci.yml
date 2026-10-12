@@ -659,8 +659,7 @@ bench-diagnostic-4830:
   rules:
     - if: '$CI_COMMIT_BRANCH == "diagnostic/agent-b-advanced-types-bench-4830"'
   timeout: 20m
-  needs:
-    - build
+  needs: []
   artifacts:
     when: always
     paths:
