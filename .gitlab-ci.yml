@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 default:
+  interruptible: true
   tags:
     # CI-SCHED-01: 'company' alone also matches the Hosted Windows Runners,
     # which executed these bash scripts under PowerShell and failed the
@@ -607,7 +608,12 @@ release-attach-sbom:
 # becomes the head pipeline that blocks auto-merge. Branch pipelines carry the
 # real jobs; evaluate those. (Same fix as devnw/zig/uuid fc0d25fd.)
 workflow:
+  auto_cancel:
+    on_new_commit: interruptible
   rules:
+    - if: '$CI_COMMIT_TAG'
+      auto_cancel:
+        on_new_commit: none
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: never
     - when: always
