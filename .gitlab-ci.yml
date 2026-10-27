@@ -232,14 +232,15 @@ bench:
   # (OVH dedicated vs Lab Servers differ ~2.5x), so a static baseline can
   # only gate one class. Pin bench to the dedicated x86 (OVH) class --
   # bench/baseline.json envelope values cover that class incl. loaded runs.
-  # SONNY-4830: dedicated also matches AWS Spot overflow. The docker/x86
-  # intersection selects the calibrated OVH pool and excludes that overflow.
+  # Docker also matches the new always-warm AWS runner. The existing
+  # local-nvme tag selects the OVH class used for the committed baseline.
   tags:
     - company
     - linux
     - dedicated
     - docker
     - x86
+    - local-nvme
   before_script:
     - *install-zig
   script:
@@ -274,7 +275,7 @@ test-release-small:
 test-macos:
   stage: test
   tags:
-    - macos
+    [dedicated, macos, arm]
   before_script:
     # CI-SUP-01: fetch Zig from ziglang.org with SHA-256 verification instead
     # of `brew install zig` (brew does not expose a pinned artefact hash for
@@ -606,6 +607,7 @@ release-attach-sbom:
 # real jobs; evaluate those. (Same fix as devnw/zig/uuid fc0d25fd.)
 workflow:
   auto_cancel:
+    on_job_failure: all
     on_new_commit: interruptible
   rules:
     - if: '$CI_COMMIT_TAG'
