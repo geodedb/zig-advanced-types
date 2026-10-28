@@ -249,7 +249,16 @@ bench:
   before_script:
     - *install-zig
   script:
-    - python3 ci/bench_gate.py
+    # Keep nanosecond-scale samples on one CPU from this job's allowed set.
+    # The benchmark workload, committed baseline and 30% gate stay unchanged.
+    - |
+      python3 - <<'PY'
+      import os
+      cpu = min(os.sched_getaffinity(0))
+      os.sched_setaffinity(0, {cpu})
+      print(f"Benchmark CPU: {cpu}", flush=True)
+      os.execvp("python3", ["python3", "ci/bench_gate.py"])
+      PY
   needs:
     - build
 
