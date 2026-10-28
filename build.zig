@@ -35,6 +35,14 @@ pub fn build(b: *std.Build) void {
     const run_unit_tests = b.addRunArtifact(unit_tests);
     test_step.dependOn(&run_unit_tests.step);
 
+    // Reuse the exact unit-test executable for coverage without compiling or
+    // running another uninstrumented copy in the coverage job.
+    const test_binary_step = b.step("test-binary", "Install the unit-test binary for coverage");
+    const install_unit_tests = b.addInstallArtifact(unit_tests, .{
+        .dest_sub_path = "unit-tests",
+    });
+    test_binary_step.dependOn(&install_unit_tests.step);
+
     // Integration tests (separate test file with module import)
     const integration_step = b.step("test-integration", "Run integration tests");
     const integration_tests = b.addTest(.{

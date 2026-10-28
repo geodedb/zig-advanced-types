@@ -116,7 +116,12 @@ test:
   before_script:
     - *install-zig
   script:
-    - zig build test --summary all
+    # Both steps share one compile. Baseline CPU permits reuse on another x86 runner.
+    - zig build test test-binary -Dcpu=baseline --summary all
+  artifacts:
+    paths:
+      - zig-out/bin/unit-tests
+    expire_in: 1 day
   needs:
     - build
 
@@ -433,23 +438,16 @@ test-linux-aarch64:
 # ============================================================================
 coverage:
   stage: coverage
-  # CI-COV-01 (take 2): kcov is packaged in neither Debian bookworm nor
-  # Ubuntu noble (verified: universe enabled, package absent). Use the
-  # official kcov image instead -- Debian-based with kcov preinstalled;
-  # entrypoint cleared so GitLab can run its shell.
+  # kcov is preinstalled; reuse the required unit-test job's executable so
+  # this image needs neither a package installation nor another Zig compile.
   image:
-    name: kcov/kcov:v42
+    name: kcov/kcov:v42@sha256:30c442617f3d8e040bf0ec2cba19cc2ee517b668f3a3d50b2d3de1c435138a8a
     entrypoint: [""]
-  before_script:
-    - *install-zig
+  before_script: []
   script:
-    # Build the unit-test binary with debug info so kcov can decode frames.
-    - zig build test -Doptimize=Debug --summary all
-    # Locate the test binary in the zig-cache (Zig puts it under .zig-cache/o/<hash>/test).
-    - TEST_BIN=$(find .zig-cache/o -name test -type f -executable | head -n1)
-    - echo "Coverage target $TEST_BIN"
+    - test -x zig-out/bin/unit-tests
     - mkdir -p coverage
-    - kcov --include-path=src coverage "$TEST_BIN" || true
+    - kcov --include-path="$CI_PROJECT_DIR/src" coverage zig-out/bin/unit-tests
     - ls -la coverage/
   coverage: '/Total.*\s(\d+\.\d+)%/'
   artifacts:
@@ -460,7 +458,8 @@ coverage:
     expose_as: "Coverage Report"
   allow_failure: true
   needs:
-    - build
+    - job: test
+      artifacts: true
 
 # Coverage-guided fuzz testing.
 # Runs with a 60-second timeout so the job always terminates.
