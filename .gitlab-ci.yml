@@ -16,20 +16,20 @@ default:
 
 include:
   # Security scanning
-  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.58.0
+  - component: gitlab.com/devnw/ci-catalog/security-gitleaks@v1.63.1
 
   # Code quality
-  - component: gitlab.com/devnw/ci-catalog/zig-format@v1.58.0
+  - component: gitlab.com/devnw/ci-catalog/zig-format@v1.63.1
 
   # SBOM
-  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.58.0
-  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.58.0
+  - component: gitlab.com/devnw/ci-catalog/sbom-generate@v1.63.1
+  - component: gitlab.com/devnw/ci-catalog/sbom-scan@v1.63.1
 
   # Release
-  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.58.0
+  - component: gitlab.com/devnw/ci-catalog/release-semantic@v1.63.1
     inputs:
       release_auth: job_token
-  - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.58.0
+  - component: gitlab.com/devnw/ci-catalog/zig-version-tag-check@v1.63.1
 
 variables:
   ZIG_VERSION: "0.16.0"
